@@ -1,0 +1,155 @@
+Sub FindShapesAndLinesWithDimensions()
+    Dim pres As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim result As String
+    Dim textShapeSlides As String
+    Dim smallShapeSlides As String
+    Dim tableSlides As String
+    Dim foundShapes As Boolean
+    Dim foundSmallShapes As Boolean
+    Dim foundTables As Boolean
+    Dim filePath As String
+    Dim fileNum As Integer
+    Dim fileName As String
+    
+    ' Khởi tạo
+    Set pres = ActivePresentation
+    foundShapes = False
+    foundSmallShapes = False
+    foundTables = False
+    textShapeSlides = ""
+    smallShapeSlides = ""
+    tableSlides = ""
+    result = "Ket qua tim kiem:" & vbCrLf
+    
+    ' Đặt thông số (đơn vị points, 1cm = 28.3464 points)
+    Const maxHeightText As Single = 22.67712 ' 0.8cm
+    Const maxHeightSmall As Single = 5.66928 ' 0.2cm
+    Const minWidth As Single = 56.6928 ' 2cm
+    Const arrowLeftPosition As Single = 992.124 ' 35cm
+    Const minTableBottom As Single = 543.785856 ' 19.24cm
+    
+    ' Duyệt qua tất cả các slide
+    For Each sld In pres.Slides
+        Dim slideHasTextShape As Boolean
+        Dim slideHasSmallShape As Boolean
+        Dim slideHasTable As Boolean
+        slideHasTextShape = False
+        slideHasSmallShape = False
+        slideHasTable = False
+        
+        ' Duyệt qua tất cả các shape trong slide
+        For Each shp In sld.Shapes
+            ' Kiểm tra shape có text (1-3 ký tự, chiều cao < 0.8cm)
+            If shp.HasTextFrame Then
+                If shp.TextFrame.HasText Then
+                    Dim rawText As String
+                    On Error Resume Next
+                    rawText = shp.TextFrame.TextRange.Text
+                    On Error GoTo 0
+                    
+                    ' Loại bỏ khoảng trắng và ký tự xuống dòng
+                    rawText = Trim(Replace(rawText, Chr(13), ""))
+                    
+                    If shp.Height < maxHeightText And Len(rawText) >= 1 And Len(rawText) <= 3 Then
+                        slideHasTextShape = True
+                        foundShapes = True
+                        
+                        ' Thêm mũi tên màu xanh lá cây cho shape text
+                        Dim textArrow As Shape
+                        Set textArrow = sld.Shapes.AddShape(msoShapeLeftArrow, _
+                            arrowLeftPosition, shp.Top, 30, 15)
+                        textArrow.Fill.ForeColor.RGB = RGB(0, 255, 0) ' Màu xanh lá cây
+                        textArrow.Line.Visible = msoFalse
+                    End If
+                End If
+            End If
+            
+            ' Kiểm tra shape/picture/line (chiều cao <= 0.2cm, chiều rộng > 2cm)
+            If (shp.Type = msoShape Or shp.Type = msoPicture Or shp.Type = msoLine) And _
+               shp.Height <= maxHeightSmall And shp.Width > minWidth Then
+                slideHasSmallShape = True
+                foundSmallShapes = True
+                
+                ' Thêm mũi tên màu đỏ cho shape/picture/line
+                Dim arrow As Shape
+                Set arrow = sld.Shapes.AddShape(msoShapeLeftArrow, _
+                    arrowLeftPosition, shp.Top, 30, 15)
+                arrow.Fill.ForeColor.RGB = RGB(255, 0, 0) ' Màu đỏ
+                arrow.Line.Visible = msoFalse
+            End If
+            
+            ' Kiểm tra table có bottom > 19.24cm
+            If shp.Type = msoTable Then
+                Dim tableBottom As Single
+                tableBottom = shp.Top + shp.Height
+                If tableBottom > minTableBottom Then
+                    slideHasTable = True
+                    foundTables = True
+                    
+                    ' Thêm mũi tên màu tím sáng cho table
+                    Dim tableArrow As Shape
+                    Set tableArrow = sld.Shapes.AddShape(msoShapeLeftArrow, _
+                        arrowLeftPosition, shp.Top, 30, 15)
+                    tableArrow.Fill.ForeColor.RGB = RGB(204, 153, 255) ' Màu tím sáng
+                    tableArrow.Line.Visible = msoFalse
+                End If
+            End If
+        Next shp
+        
+        ' Ghi slide vào danh sách tương ứng
+        If slideHasTextShape Then
+            textShapeSlides = textShapeSlides & "Slide " & sld.SlideIndex & vbCrLf
+        End If
+        If slideHasSmallShape Then
+            smallShapeSlides = smallShapeSlides & "Slide " & sld.SlideIndex & vbCrLf
+        End If
+        If slideHasTable Then
+            tableSlides = tableSlides & "Slide " & sld.SlideIndex & vbCrLf
+        End If
+    Next sld
+    
+    ' Xây dựng thông báo kết quả
+    result = result & "1. Cac slide chua shape co chieu cao < 0,8cm va tu 1 den 3 ky tu:" & vbCrLf
+    If foundShapes Then
+        result = result & textShapeSlides & vbCrLf
+    Else
+        result = result & "Khong co slide nao thoa dieu kien." & vbCrLf & vbCrLf
+    End If
+    
+    result = result & "2. Cac slide chua shape/picture/line co chieu cao <= 0,2cm va chieu rong > 2cm:" & vbCrLf
+    If foundSmallShapes Then
+        result = result & smallShapeSlides & vbCrLf
+    Else
+        result = result & "Khong co slide nao thoa dieu kien." & vbCrLf & vbCrLf
+    End If
+    
+    result = result & "3. Cac slide chua table co vi tri bottom thap hon 19,24cm:" & vbCrLf
+    If foundTables Then
+        result = result & tableSlides & vbCrLf
+    Else
+        result = result & "Khong co slide nao thoa dieu kien." & vbCrLf
+    End If
+    
+    ' Hiển thị kết quả
+    MsgBox result, vbInformation, "Ket qua tim kiem"
+    
+    ' T ROUTINE AND LƯU FILE .txt trên Desktop
+    Dim currentDate As String
+    currentDate = Format(Date, "yymmdd") ' Lấy ngày hiện tại định dạng YYMMDD (250423)
+    
+    ' Lấy tên file PowerPoint (loại bỏ phần mở rộng .pptx hoặc .ppt)
+    fileName = pres.Name
+    If InStrRev(fileName, ".") > 0 Then
+        fileName = Left(fileName, InStrRev(fileName, ".") - 1)
+    End If
+    
+    ' Xây dựng đường dẫn file: Desktop\[YYMMDD]. [Tên file PowerPoint].txt
+    filePath = Environ("USERPROFILE") & "\Desktop\" & currentDate & ". " & fileName & ".txt"
+    
+    fileNum = FreeFile
+    Open filePath For Output As #fileNum
+    Print #fileNum, result
+    Close #fileNum
+End Sub

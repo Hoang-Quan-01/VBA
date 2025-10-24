@@ -1,0 +1,639 @@
+' =============================================================================
+' TEN SUB: XuLyTableTimeline
+' =============================================================================
+' MO TA CHUC NANG:
+' Sub nay co 2 che do hoat dong:
+' CHE DO 1: Tao textbox, Cut cac doi tuong, xoa table va xoa slide rong
+' CHE DO 2: Xoa cac textbox da tao
+'
+' LOGIC XU LY CHI TIET CHE DO 1:
+' Buoc 1: TAO TEXTBOX TU TABLE "0. Table Timline" (Chi o duoi ranh gioi)
+'    - Duyet cac slide duoi section "//////////"
+'    - Tim table "0. Table Timline", lay noi dung cot 2
+'    - Tao textbox ten "0. Ten Du An (Check)"
+'    - Vi tri: Left = 37cm, trung diem vertical trung voi table, Width = 24cm
+'
+' Buoc 2: TIM SECTION RANH GIOI
+'    - Tim section co ten "//////////"
+'    - Xac dinh vung tren va duoi ranh gioi
+'
+' Buoc 3: DUYET CAC SLIDE TREN RANH GIOI
+'    - Quet lan luot tu slide 1 den slide truoc ranh gioi
+'    - Tim table "0. Table Timline", sap xep theo thu tu tu tren xuong
+'
+' Buoc 4: XU LY TUNG TABLE
+'    - Lay chuoi cot 2 cua table
+'    - Tim table trung khop o duoi ranh gioi
+'
+' Buoc 5: XAC DINH DOI TUONG CAN CHUYEN
+'    - Chi chuyen doi tuong co trung diem nam trong khoang Top-Bottom cua table
+'    - Loai tru table "0. Table Timline" va "0. Group thanh Now"
+'
+' Buoc 6: CUT VA PASTE DOI TUONG
+'    - Copy doi tuong tu slide nguon
+'    - Paste vao slide dich voi vi tri tuong doi
+'    - Xoa doi tuong goc
+'
+' Buoc 7: XOA TABLE "0. Table Timline" DA XU LY
+'    - Sau khi cut doi tuong, xoa table o slide nguon
+'
+' Buoc 8: XOA SLIDE RONG DUOI RANH GIOI
+'    - Duyet cac slide duoi ranh gioi
+'    - Xoa slide khong con table "0. Table Timline"
+'
+' LOGIC XU LY CHI TIET CHE DO 2:
+' - Xoa tat ca textbox co ten "0. Ten Du An (Check)" va vi tri Left = 37cm
+'
+' THAM SO QUAN TRONG:
+' - dividerSectionName = "//////////" : Ten section ranh gioi
+' - tableName = "0. Table Timline" : Ten table can xu ly
+' - tenDoiTuongLoaiTru = "0. Group thanh Now" : Ten doi tuong khong duoc cut
+' - textboxName = "0. Ten Du An (Check)" : Ten textbox duoc tao
+' - textboxLeftPos = 37cm : Vi tri left cua textbox
+' - textboxWidth = 24cm : Chieu rong cua textbox
+' =============================================================================
+
+' Cac hang so
+Const TABLE_NAME As String = "0. Table Timline"
+Const TEXTBOX_NAME As String = "0. Ten Du An (Check)"
+Const TEXTBOX_LEFT_POS As Single = 37 * 28.3464567 ' 37 cm chuyen sang points
+Const TEXTBOX_WIDTH As Single = 24 * 28.3464567 ' 24 cm chuyen sang points
+Const ERROR_MARGIN As Single = 1 ' Khoang sai lech cho vi tri left
+
+Sub XuLyTableTimeline()
+    On Error GoTo LoiXuLy
+    
+    Dim pres As Presentation
+    Dim choice As String
+    
+    ' Kiem tra bai thuyet trinh
+    If Application.Presentations.Count = 0 Then
+        MsgBox "Khong co bai thuyet trinh nao dang mo!", vbExclamation
+        Exit Sub
+    End If
+    
+    Set pres = ActivePresentation
+    
+    ' Hoi nguoi dung chon che do
+    choice = InputBox("Chon che do thuc hien:" & vbCrLf & vbCrLf & _
+                      "1 - Tao textbox, Cut doi tuong, xoa table va xoa slide rong" & vbCrLf & _
+                      "2 - Xoa cac textbox da tao" & vbCrLf & vbCrLf & _
+                      "Nhap 1 hoac 2:", "Chon che do", "1")
+    
+    ' Kiem tra lua chon hop le
+    If choice <> "1" And choice <> "2" Then
+        MsgBox "Lua chon khong hop le! Vui long chon 1 hoac 2.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' XU LY THEO CHE DO
+    If choice = "1" Then
+        ' CHE DO 1
+        Call XuLyCheD01_ToanBo(pres)
+    Else
+        ' CHE DO 2
+        Call XuLyCheD02_XoaTextbox(pres)
+    End If
+    
+    Exit Sub
+    
+LoiXuLy:
+    MsgBox "Da xay ra loi: " & Err.Description & vbCrLf & _
+           "Ma loi: " & Err.Number, vbCritical
+    Debug.Print "Loi: " & Err.Description
+End Sub
+
+' =============================================================================
+' SUB CHE DO 1: Toan bo xu ly
+' =============================================================================
+Sub XuLyCheD01_ToanBo(pres As Presentation)
+    On Error GoTo LoiXuLy
+    
+    Dim sec As SectionProperties
+    Dim dividerSectionName As String
+    Dim dividerSectionIndex As Long
+    Dim foundDivider As Boolean
+    Dim slideFirstInDivider As Long
+    Dim tableName As String
+    Dim tenDoiTuongLoaiTru As String
+    Dim i As Long
+    
+    dividerSectionName = "//////////"
+    tableName = "0. Table Timline"
+    tenDoiTuongLoaiTru = "0. Group thanh Now"
+    foundDivider = False
+    
+    Set sec = pres.SectionProperties
+    
+    ' Kiem tra co section khong
+    If sec.Count = 0 Then
+        MsgBox "Khong co Section nao trong bai thuyet trinh!", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Tim section Ranh gioi
+    For i = 1 To sec.Count
+        If sec.Name(i) = dividerSectionName Then
+            dividerSectionIndex = i
+            foundDivider = True
+            
+            ' Kiem tra neu section ranh gioi co slide
+            If sec.SlidesCount(i) > 0 Then
+                slideFirstInDivider = sec.FirstSlide(i)
+            Else
+                ' Neu section ranh gioi khong co slide, tim slide dau tien cua section tiep theo
+                If i < sec.Count Then
+                    slideFirstInDivider = sec.FirstSlide(i + 1)
+                Else
+                    slideFirstInDivider = pres.Slides.Count + 1
+                End If
+            End If
+            Exit For
+        End If
+    Next i
+    
+    If Not foundDivider Then
+        MsgBox "Khong tim thay section '" & dividerSectionName & "'!", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Kiem tra neu vung duoi ranh gioi rong
+    If slideFirstInDivider > pres.Slides.Count Then
+        MsgBox "Khong co slide nao o duoi section '" & dividerSectionName & "' de xu ly!", vbInformation
+        Exit Sub
+    End If
+    
+    ' BUOC 1: Tao textbox tu table (chi o duoi ranh gioi)
+    Dim soTextboxTao As Long
+    soTextboxTao = TaoTextboxTuTable(pres, slideFirstInDivider)
+    
+    ' BUOC 2-7: Cut va paste doi tuong, xoa table
+    Dim soDoiTuongDaChuyen As Long
+    Dim soTableDaXoa As Long
+    soDoiTuongDaChuyen = 0
+    soTableDaXoa = 0
+    
+    Call CutPasteVaXoaTable(pres, sec, slideFirstInDivider, dividerSectionName, _
+                            tableName, tenDoiTuongLoaiTru, soDoiTuongDaChuyen, soTableDaXoa)
+    
+    ' BUOC 8: Xoa cac slide duoi ranh gioi khong con table "0. Table Timline"
+    Dim soSlideXoa As Long
+    soSlideXoa = XoaSlideRongDuoiRanhGioi(pres, slideFirstInDivider, tableName)
+    
+    ' Thong bao ket qua
+    MsgBox "CHE DO 1: Hoan thanh xu ly!" & vbCrLf & _
+           "- Textbox da tao: " & soTextboxTao & vbCrLf & _
+           "- Doi tuong da chuyen: " & soDoiTuongDaChuyen & vbCrLf & _
+           "- Table '0. Table Timline' da xoa: " & soTableDaXoa & vbCrLf & _
+           "- Slide rong da xoa: " & soSlideXoa, vbInformation
+    Exit Sub
+    
+LoiXuLy:
+    MsgBox "Da xay ra loi tai Che do 1: " & Err.Description & vbCrLf & _
+           "Ma loi: " & Err.Number, vbCritical
+    Debug.Print "Loi Che do 1: " & Err.Description
+End Sub
+
+' =============================================================================
+' HAM TAO TEXTBOX TU TABLE (Chi o duoi ranh gioi)
+' =============================================================================
+Function TaoTextboxTuTable(pres As Presentation, slideFirstInDivider As Long) As Long
+    On Error Resume Next
+    
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim tbl As Table
+    Dim content As String
+    Dim row As Integer
+    Dim txt As Shape
+    Dim tableMid As Single
+    Dim slideIndex As Long
+    Dim soTextboxTao As Long
+    
+    soTextboxTao = 0
+    
+    ' Duyet cac slide duoi ranh gioi
+    For slideIndex = slideFirstInDivider To pres.Slides.Count
+        Set sld = pres.Slides(slideIndex)
+        
+        For Each shp In sld.Shapes
+            If shp.HasTable And shp.Name = TABLE_NAME Then
+                Set tbl = shp.Table
+                content = ""
+                
+                ' Lay noi dung cot 2
+                For row = 1 To tbl.Rows.Count
+                    If tbl.Columns.Count >= 2 Then
+                        content = content & tbl.Cell(row, 2).Shape.TextFrame.TextRange.Text & vbCrLf
+                    End If
+                Next row
+                
+                ' Tao text box moi
+                Set txt = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 0, 0, TEXTBOX_WIDTH, 50)
+                txt.TextFrame.TextRange.Text = content
+                txt.TextFrame.AutoSize = ppAutoSizeShapeToFitText
+                
+                ' Dat vi tri va kich thuoc
+                txt.Left = TEXTBOX_LEFT_POS
+                txt.Width = TEXTBOX_WIDTH
+                
+                ' Dat vi tri vertical de trung diem trung nhau
+                tableMid = shp.Top + shp.Height / 2
+                txt.Top = tableMid - txt.Height / 2
+                
+                ' Dat ten
+                txt.Name = TEXTBOX_NAME
+                
+                soTextboxTao = soTextboxTao + 1
+            End If
+        Next shp
+    Next slideIndex
+    
+    TaoTextboxTuTable = soTextboxTao
+    On Error GoTo 0
+End Function
+
+' =============================================================================
+' SUB CUT PASTE VA XOA TABLE
+' =============================================================================
+Sub CutPasteVaXoaTable(pres As Presentation, _
+                       sec As SectionProperties, _
+                       slideFirstInDivider As Long, _
+                       dividerSectionName As String, _
+                       tableName As String, _
+                       tenDoiTuongLoaiTru As String, _
+                       ByRef soDoiTuongDaChuyen As Long, _
+                       ByRef soTableDaXoa As Long)
+    On Error GoTo LoiXuLy
+    
+    Dim slideIndex As Long
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim tbl As Table
+    Dim chuoiCol2 As String
+    Dim tableTop As Single
+    Dim tableBottom As Single
+    Dim tableLeft As Single
+    Dim dsTableTrongSlide As New Collection
+    Dim tableItem As Variant
+    Dim i As Long
+    Dim k As Long
+    
+    ' Duyet tu slide dau tien den slide cuoi truoc ranh gioi
+    For slideIndex = 1 To slideFirstInDivider - 1
+        Set sld = pres.Slides(slideIndex)
+        
+        ' Xoa collection truoc khi thu thap table moi
+        Set dsTableTrongSlide = New Collection
+        
+        ' Thu thap tat ca table "0. Table Timline" trong slide nay
+        For Each shp In sld.Shapes
+            If shp.Type = msoTable Then
+                If shp.Name = tableName Then
+                    dsTableTrongSlide.Add shp
+                End If
+            End If
+        Next shp
+        
+        ' Xu ly tung table theo thu tu tu tren xuong (sap xep theo Top)
+        If dsTableTrongSlide.Count > 0 Then
+            ' Sap xep table theo Top (tu tren xuong duoi)
+            Dim dsSorted As New Collection
+            Dim tempShp As Shape
+            Dim minTop As Single
+            Dim minIndex As Long
+            
+            Do While dsTableTrongSlide.Count > 0
+                minTop = 999999
+                minIndex = 0
+                
+                ' Tim table co Top nho nhat
+                For k = 1 To dsTableTrongSlide.Count
+                    Set tempShp = dsTableTrongSlide(k)
+                    If tempShp.Top < minTop Then
+                        minTop = tempShp.Top
+                        minIndex = k
+                    End If
+                Next k
+                
+                ' Chuyen table co Top nho nhat vao danh sach da sap xep
+                Set tempShp = dsTableTrongSlide(minIndex)
+                dsSorted.Add tempShp
+                dsTableTrongSlide.Remove minIndex
+            Loop
+            
+            ' Xu ly tung table da sap xep
+            For Each tableItem In dsSorted
+                Set shp = tableItem
+                Set tbl = shp.Table
+                
+                ' Lay chuoi o cot 2 (ket hop tat ca cac dong)
+                chuoiCol2 = ""
+                For i = 1 To tbl.Rows.Count
+                    If tbl.Columns.Count >= 2 Then
+                        chuoiCol2 = chuoiCol2 & Trim(tbl.Cell(i, 2).Shape.TextFrame.TextRange.Text)
+                    End If
+                Next i
+                
+                ' Loai bo ky tu xuong dong va khoang trang thua
+                chuoiCol2 = Replace(chuoiCol2, vbCr, "")
+                chuoiCol2 = Replace(chuoiCol2, vbLf, "")
+                chuoiCol2 = Trim(chuoiCol2)
+                
+                If chuoiCol2 <> "" Then
+                    ' Lay vi tri cua table nay
+                    tableTop = shp.Top
+                    tableBottom = shp.Top + shp.Height
+                    tableLeft = shp.Left
+                    
+                    ' Tim table trung khop o DUOI ranh gioi va xu ly
+                    Call TimVaCutPaste(pres, slideFirstInDivider, pres.Slides.Count, _
+                                      chuoiCol2, tableName, sld, _
+                                      tableTop, tableBottom, tableLeft, soDoiTuongDaChuyen, _
+                                      tenDoiTuongLoaiTru, soTableDaXoa)
+                End If
+            Next tableItem
+        End If
+    Next slideIndex
+    
+    Exit Sub
+    
+LoiXuLy:
+    MsgBox "Loi tai CutPasteVaXoaTable: " & Err.Description, vbCritical
+    Debug.Print "Loi: " & Err.Description
+End Sub
+
+' =============================================================================
+' SUB TIM VA CUT PASTE DOI TUONG, XOA TABLE DA XU LY
+' =============================================================================
+Sub TimVaCutPaste(pres As Presentation, _
+                  slideStart As Long, _
+                  slideEnd As Long, _
+                  chuoiTimKiem As String, _
+                  tableName As String, _
+                  slideDich As Slide, _
+                  tableDichTop As Single, _
+                  tableDichBottom As Single, _
+                  tableDichLeft As Single, _
+                  ByRef soDoiTuongDaChuyen As Long, _
+                  tenDoiTuongLoaiTru As String, _
+                  ByRef soTableDaXoa As Long)
+    
+    On Error Resume Next
+    
+    Dim slideIndex As Long
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim tbl As Table
+    Dim chuoiCol2 As String
+    Dim i As Long
+    Dim tableNguonTop As Single
+    Dim tableNguonBottom As Single
+    Dim tableNguonLeft As Single
+    Dim dsDoiTuongCanChuyen As New Collection
+    Dim doiTuong As Shape
+    Dim trungDiem As Single
+    Dim khoangCachTop As Single
+    Dim khoangCachLeft As Single
+    Dim tableNguon As Shape
+    Dim coDoiTuongBiCut As Boolean
+    
+    ' Duyet cac slide tu slideStart den slideEnd
+    For slideIndex = slideStart To slideEnd
+        Set sld = pres.Slides(slideIndex)
+        
+        ' Tim table co ten "0. Table Timline"
+        For Each shp In sld.Shapes
+            If shp.Type = msoTable Then
+                If shp.Name = tableName Then
+                    Set tbl = shp.Table
+                    
+                    ' Lay chuoi o cot 2
+                    chuoiCol2 = ""
+                    For i = 1 To tbl.Rows.Count
+                        If tbl.Columns.Count >= 2 Then
+                            chuoiCol2 = chuoiCol2 & Trim(tbl.Cell(i, 2).Shape.TextFrame.TextRange.Text)
+                        End If
+                    Next i
+                    
+                    chuoiCol2 = Replace(chuoiCol2, vbCr, "")
+                    chuoiCol2 = Replace(chuoiCol2, vbLf, "")
+                    chuoiCol2 = Trim(chuoiCol2)
+                    
+                    ' Kiem tra trung khop
+                    If chuoiCol2 = chuoiTimKiem Then
+                        tableNguonTop = shp.Top
+                        tableNguonBottom = shp.Top + shp.Height
+                        tableNguonLeft = shp.Left
+                        Set tableNguon = shp
+                        coDoiTuongBiCut = False
+                        
+                        ' Tim cac doi tuong can chuyen
+                        Set dsDoiTuongCanChuyen = New Collection
+                        
+                        Dim shpCheck As Shape
+                        For Each shpCheck In sld.Shapes
+                            ' Bo qua chinh table nay va doi tuong can loai tru
+                            If Not (shpCheck.Type = msoTable And shpCheck.Name = tableName) _
+                               And shpCheck.Name <> tenDoiTuongLoaiTru Then
+                                ' Tinh trung diem theo chieu doc
+                                trungDiem = shpCheck.Top + (shpCheck.Height / 2)
+                                
+                                ' Kiem tra trung diem co nam trong khoang table khong
+                                If trungDiem >= tableNguonTop And trungDiem <= tableNguonBottom Then
+                                    dsDoiTuongCanChuyen.Add shpCheck
+                                End If
+                            End If
+                        Next shpCheck
+                        
+                        ' Cut va Paste cac doi tuong
+                        If dsDoiTuongCanChuyen.Count > 0 Then
+                            Dim doiTuongMoi As Shape
+                            
+                            For Each doiTuong In dsDoiTuongCanChuyen
+                                ' Tinh khoang cach tuong doi
+                                khoangCachTop = doiTuong.Top - tableNguonTop
+                                khoangCachLeft = doiTuong.Left - tableNguonLeft
+                                
+                                ' Copy doi tuong
+                                doiTuong.Copy
+                                
+                                ' Paste vao slide dich
+                                slideDich.Shapes.Paste
+                                
+                                ' Lay doi tuong vua paste (doi tuong cuoi cung)
+                                Set doiTuongMoi = slideDich.Shapes(slideDich.Shapes.Count)
+                                
+                                ' Dat lai vi tri tuong doi
+                                doiTuongMoi.Top = tableDichTop + khoangCachTop
+                                doiTuongMoi.Left = tableDichLeft + khoangCachLeft
+                                
+                                ' Xoa doi tuong goc
+                                doiTuong.Delete
+                                
+                                soDoiTuongDaChuyen = soDoiTuongDaChuyen + 1
+                                coDoiTuongBiCut = True
+                            Next doiTuong
+                        End If
+                        
+                        ' Xoa table nguon neu co doi tuong bi cut
+                        If coDoiTuongBiCut Then
+                            tableNguon.Delete
+                            soTableDaXoa = soTableDaXoa + 1
+                        End If
+                        
+                        ' Thoat sau khi xu ly table dau tien trung khop
+                        Exit For
+                    End If
+                End If
+            End If
+        Next shp
+    Next slideIndex
+    
+    On Error GoTo 0
+End Sub
+
+' =============================================================================
+' HAM XOA SLIDE RONG DUOI RANH GIOI
+' =============================================================================
+Function XoaSlideRongDuoiRanhGioi(pres As Presentation, _
+                                  slideFirstInDivider As Long, _
+                                  tableName As String) As Long
+    On Error Resume Next
+    
+    Dim slideIndex As Long
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim coTable As Boolean
+    Dim soSlideXoa As Long
+    
+    soSlideXoa = 0
+    
+    ' Duyet tu slide cuoi ve slide dau (de tranh loi chi so khi xoa)
+    For slideIndex = pres.Slides.Count To slideFirstInDivider Step -1
+        Set sld = pres.Slides(slideIndex)
+        coTable = False
+        
+        ' Kiem tra xem slide co table "0. Table Timline" khong
+        For Each shp In sld.Shapes
+            If shp.Type = msoTable Then
+                If shp.Name = tableName Then
+                    coTable = True
+                    Exit For
+                End If
+            End If
+        Next shp
+        
+        ' Neu slide khong co table thi xoa
+        If Not coTable Then
+            sld.Delete
+            soSlideXoa = soSlideXoa + 1
+        End If
+    Next slideIndex
+    
+    XoaSlideRongDuoiRanhGioi = soSlideXoa
+    On Error GoTo 0
+End Function
+
+' =============================================================================
+' SUB CHE DO 2: Xoa cac textbox da tao, xoa slide va section duoi ranh gioi
+' =============================================================================
+Sub XuLyCheD02_XoaTextbox(pres As Presentation)
+    On Error GoTo LoiXuLy
+    
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim i As Long
+    Dim soTextboxXoa As Long
+    Dim sec As SectionProperties
+    Dim dividerSectionName As String
+    Dim dividerSectionIndex As Long
+    Dim foundDivider As Boolean
+    Dim slideFirstInDivider As Long
+    Dim slideXoaIndex As Long
+    Dim soSlideXoa As Long
+    Dim sectionXoaIndex As Long
+    Dim soSectionXoa As Long
+    
+    soTextboxXoa = 0
+    soSlideXoa = 0
+    soSectionXoa = 0
+    dividerSectionName = "//////////"
+    foundDivider = False
+    
+    Set sec = pres.SectionProperties
+    
+    ' BUOC 1: Xoa cac textbox
+    For Each sld In pres.Slides
+        For i = sld.Shapes.Count To 1 Step -1
+            Set shp = sld.Shapes(i)
+            If shp.Name = TEXTBOX_NAME And Abs(shp.Left - TEXTBOX_LEFT_POS) < ERROR_MARGIN Then
+                shp.Delete
+                soTextboxXoa = soTextboxXoa + 1
+            End If
+        Next i
+    Next sld
+    
+    ' BUOC 2: Tim section ranh gioi
+    If sec.Count > 0 Then
+        For i = 1 To sec.Count
+            If sec.Name(i) = dividerSectionName Then
+                dividerSectionIndex = i
+                foundDivider = True
+                
+                ' Kiem tra neu section ranh gioi co slide
+                If sec.SlidesCount(i) > 0 Then
+                    slideFirstInDivider = sec.FirstSlide(i)
+                Else
+                    ' Neu section ranh gioi khong co slide, tim slide dau tien cua section tiep theo
+                    If i < sec.Count Then
+                        slideFirstInDivider = sec.FirstSlide(i + 1)
+                    Else
+                        slideFirstInDivider = pres.Slides.Count + 1
+                    End If
+                End If
+                Exit For
+            End If
+        Next i
+    End If
+    
+    ' BUOC 3: Xoa cac slide duoi ranh gioi (neu co)
+    If foundDivider And slideFirstInDivider <= pres.Slides.Count Then
+        For slideXoaIndex = pres.Slides.Count To slideFirstInDivider Step -1
+            On Error Resume Next
+            pres.Slides(slideXoaIndex).Delete
+            If Err.Number = 0 Then
+                soSlideXoa = soSlideXoa + 1
+            Else
+                Debug.Print "Loi khi xoa slide " & slideXoaIndex & ": " & Err.Description
+            End If
+            On Error GoTo LoiXuLy
+        Next slideXoaIndex
+    End If
+    
+    ' BUOC 4: Xoa cac section tu ranh gioi tro xuong (bao gom section ranh gioi)
+    If foundDivider Then
+        For sectionXoaIndex = sec.Count To dividerSectionIndex Step -1
+            On Error Resume Next
+            sec.Delete sectionXoaIndex, True ' True = xoa ca cac slide trong section (neu con)
+            If Err.Number = 0 Then
+                soSectionXoa = soSectionXoa + 1
+            Else
+                Debug.Print "Loi khi xoa section " & sectionXoaIndex & ": " & Err.Description
+            End If
+            On Error GoTo LoiXuLy
+        Next sectionXoaIndex
+    End If
+    
+    ' Thong bao ket qua
+    MsgBox "CHE DO 2: Hoan thanh xu ly!" & vbCrLf & _
+           "- Textbox da xoa: " & soTextboxXoa & vbCrLf & _
+           "- Slide da xoa: " & soSlideXoa & vbCrLf & _
+           "- Section da xoa: " & soSectionXoa, vbInformation
+    Exit Sub
+    
+LoiXuLy:
+    MsgBox "Da xay ra loi tai Che do 2: " & Err.Description & vbCrLf & _
+           "Ma loi: " & Err.Number, vbCritical
+    Debug.Print "Loi Che do 2: " & Err.Description
+End Sub

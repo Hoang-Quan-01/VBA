@@ -1,0 +1,626 @@
+Option Explicit
+
+' ===== CAU HINH CAC BIEN TOAN CUC =====
+' Ten cua group can xu ly
+Const GROUP_NAME As String = "0. Group thanh Now"
+' Ten selection cua table tieu de
+Const TABLE_TIEU_DE As String = "0. Table Tieu de"
+' Ten cac table timeline can xu ly
+Const TABLE_TIMLINE As String = "0. Table Timline"
+Const TABLE_TIMELINE As String = "0. Table Timeline"
+Const TABLE_TIMELINE_1 As String = "0. Table Timeline 1"
+Const TABLE_TIMELINE_2 As String = "0. Table Timeline 2"
+Const TABLE_TIMELINE_3 As String = "0. Table Timeline 3"
+' Ten table timline phu
+Const TABLE_TIMLINE_2 As String = "0. Table Timline_2"
+' Ten shape hatch
+Const SHAPE_HATCH As String = "0. HATCH XAM THOI GIAN"
+' Chieu cao toi thieu cua group (cm)
+Const MIN_HEIGHT As Single = 5
+' Chieu rong toi thieu cua group (cm)
+Const MIN_WIDTH As Single = 0.9
+' Chieu rong toi da cua group (cm)
+Const MAX_WIDTH As Single = 2
+' ======================================
+
+' =====================================================================
+' CHUONG TRINH: VBACanhChinhTimescaleKhung
+' TAC GIA: LAM HOANG QUAN
+' NGAY TAO: 28/08/2025
+' PHIEN BAN: 2.3
+' =====================================================================
+' CHUC NANG: Canh chinh va di chuyen cac doi tuong Timescale va "0. Group thanh Now" theo ngay duoc nhap
+' MO TA: 
+' - Doi ten cac group thoa dieu kien kich thuoc thanh "0. Group thanh Now"
+' - Can giua cac thanh phan trong group "0. Group thanh Now"
+' - Canh chinh bang "0. Table Tieu de", "0. Table Timline", "0. Table Timeline", "0. Table Timeline 1", "0. Table Timeline 2", "0. Table Timeline 3", "0. Table Timline_2" va shape "0. HATCH XAM THOI GIAN"
+' - Hien hop thoai de nguoi dung nhap ngay (dinh dang DD/MM/YYYY)
+' - Tim slide chua selection "0. Group thanh Now" va bang "0. Table Tieu de"
+' - Trong bang, tim cot co chuoi "Tx" tuong ung thang da nhap (vi du T8 cho thang 8) tai hang thu 2
+' - Lay mep trai cot lam diem bat dau, mep phai lam diem ket thuc
+' - Tinh khoang cach giua hai mep
+' - Chia khoang cach thanh (so ngay trong thang - 1) phan bang nhau
+' - Di chuyen "0. Group thanh Now" den vi tri tuong ung voi ngay da nhap
+' - Ngay 1: "0. Group thanh Now" o vi tri mep trai
+' - Ngay cuoi thang: "0. Group thanh Now" o vi tri mep phai
+' - Neu ngay nhap la: ngay 14 (thang 28 ngay), ngay 15 (thang 30/31 ngay): "0. Group thanh Now" o chinh giua cot
+' - Cac ngay khac: "0. Group thanh Now" o vi tri tuong ung theo ty le
+' - Kiem tra slide co nhieu hon 1 "0. Group thanh Now" va thong bao danh sach slide vi pham
+' =====================================================================
+
+Sub VBACanhChinhTimescaleKhung()
+    Dim ppt As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim copyTableTieuDe As Shape
+    Dim copyTableTimline2 As Shape
+    Dim copyHatchShape As Shape
+    Dim timelineTable As Shape
+    Dim found As Boolean
+    Dim i As Long
+    Dim j As Long
+    Dim tieuDeCols As Long
+    Dim timelineCols As Long
+    Dim colDiff As Long
+    Dim tieuDeColWidths() As Single
+    Dim tieuDeSlideIndex As Long
+    Dim timline2SlideIndex As Long
+    Dim hatchSlideIndex As Long
+    Dim groupNowSlideIndex As Long
+    Dim groupNowLeftPosition As Single
+    Dim maxBottom As Single
+    Dim bottomMostTimeline As Shape
+    
+    ' Chạy đoạn code đổi tên group trước
+    Call ChangeGroupName
+    
+    ' Chạy đoạn code căn giữa các thành phần trong group
+    Call AlignGroupItems
+    
+    ' Lấy tham chiếu đến bài thuyết trình đang hoạt động
+    Set ppt = ActivePresentation
+    
+    ' Tìm slide đầu tiên chứa bảng "0. Table Tieu de"
+    found = False
+    For i = 1 To ppt.Slides.Count
+        Set sld = ppt.Slides(i)
+        For Each shp In sld.Shapes
+            If shp.Name = TABLE_TIEU_DE Then
+                Set copyTableTieuDe = shp
+                copyTableTieuDe.Copy
+                ' Đếm số cột của bảng "0. Table Tieu de"
+                tieuDeCols = shp.Table.Columns.Count
+                ' Lưu kích thước chiều rộng của từng cột
+                ReDim tieuDeColWidths(1 To tieuDeCols)
+                For j = 1 To tieuDeCols
+                    tieuDeColWidths(j) = shp.Table.Columns(j).Width
+                Next j
+                tieuDeSlideIndex = i ' Lưu vị trí slide chứa bảng
+                found = True
+                Exit For
+            End If
+        Next shp
+        If found Then Exit For
+    Next i
+    
+    If Not found Then
+        MsgBox "Không tìm thấy bảng có tên '" & TABLE_TIEU_DE & "' trong bất kỳ slide nào!", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Duyệt qua các slide từ slide 1 đến slide cuối cùng
+    For i = 1 To ppt.Slides.Count
+        Set sld = ppt.Slides(i)
+        
+        ' Xử lý tất cả bảng timeline trong slide hiện tại
+        For Each shp In sld.Shapes
+            If shp.Name = TABLE_TIMLINE Or shp.Name = TABLE_TIMELINE Or _
+               shp.Name = TABLE_TIMELINE_1 Or shp.Name = TABLE_TIMELINE_2 Or _
+               shp.Name = TABLE_TIMELINE_3 Then
+                Set timelineTable = shp
+                timelineCols = timelineTable.Table.Columns.Count
+                colDiff = tieuDeCols - timelineCols
+                
+                ' Điều chỉnh số cột
+                If colDiff > 0 Then
+                    ' Thêm cột bên phải nếu số cột ít hơn
+                    For j = 1 To colDiff
+                        timelineTable.Table.Columns.Add
+                    Next j
+                ElseIf colDiff < 0 Then
+                    ' Xóa cột bên phải nếu số cột nhiều hơn
+                    For j = 1 To Abs(colDiff)
+                        timelineTable.Table.Columns(timelineTable.Table.Columns.Count).Delete
+                    Next j
+                End If
+                
+                ' Điều chỉnh chiều rộng của từng cột
+                For j = 1 To tieuDeCols
+                    If j <= timelineTable.Table.Columns.Count Then
+                        timelineTable.Table.Columns(j).Width = tieuDeColWidths(j)
+                    End If
+                Next j
+            End If
+        Next shp
+        
+        ' Xử lý bảng "0. Table Tieu de" (từ slide tiếp theo sau tieuDeSlideIndex)
+        If i > tieuDeSlideIndex Then
+            found = False
+            For Each shp In sld.Shapes
+                If shp.Name = TABLE_TIEU_DE Then
+                    shp.Delete ' Xóa bảng hiện có
+                    found = True
+                    Exit For
+                End If
+            Next shp
+            
+            ' Dán bảng đã sao chép (mô phỏng Ctrl+V)
+            If found Then
+                sld.Shapes.Paste
+            End If
+        End If
+    Next i
+    
+    ' Tìm slide đầu tiên chứa bảng "0. Table Timline_2"
+    found = False
+    For i = 1 To ppt.Slides.Count
+        Set sld = ppt.Slides(i)
+        For Each shp In sld.Shapes
+            If shp.Name = TABLE_TIMLINE_2 Then
+                Set copyTableTimline2 = shp
+                copyTableTimline2.Copy
+                timline2SlideIndex = i ' Lưu vị trí slide chứa bảng
+                found = True
+                Exit For
+            End If
+        Next shp
+        If found Then Exit For
+    Next i
+    
+    ' Xử lý bảng "0. Table Timline_2" (từ slide tiếp theo sau timline2SlideIndex)
+    If found Then
+        For i = timline2SlideIndex + 1 To ppt.Slides.Count
+            Set sld = ppt.Slides(i)
+            found = False
+            For Each shp In sld.Shapes
+                If shp.Name = TABLE_TIMLINE_2 Then
+                    shp.Delete ' Xóa bảng hiện có
+                    found = True
+                    Exit For
+                End If
+            Next shp
+            
+            ' Dán bảng đã sao chép (mô phỏng Ctrl+V)
+            If found Then
+                sld.Shapes.Paste
+            End If
+        Next i
+    End If
+    
+    ' Tìm slide đầu tiên chứa shape "0. HATCH XAM THOI GIAN"
+    found = False
+    For i = 1 To ppt.Slides.Count
+        Set sld = ppt.Slides(i)
+        For Each shp In sld.Shapes
+            If shp.Name = SHAPE_HATCH Then
+                Set copyHatchShape = shp
+                copyHatchShape.Copy
+                hatchSlideIndex = i ' Lưu vị trí slide chứa shape
+                found = True
+                Exit For
+            End If
+        Next shp
+        If found Then Exit For
+    Next i
+    
+    ' Xử lý shape "0. HATCH XAM THOI GIAN" (từ slide tiếp theo sau hatchSlideIndex)
+    If found Then
+        For i = hatchSlideIndex + 1 To ppt.Slides.Count
+            Set sld = ppt.Slides(i)
+            found = False
+            For Each shp In sld.Shapes
+                If shp.Name = SHAPE_HATCH Then
+                    shp.Delete ' Xóa shape hiện có
+                    found = True
+                    Exit For
+                End If
+            Next shp
+            
+            ' Dán shape đã sao chép (mô phỏng Ctrl+V)
+            If found Then
+                sld.Shapes.Paste
+                ' Tìm shape vừa dán, đưa xuống dưới cùng và resize
+                For Each shp In sld.Shapes
+                    If shp.Name = SHAPE_HATCH Then
+                        shp.ZOrder msoSendToBack
+                        
+                        ' Tìm bảng timeline có điểm bottom thấp nhất
+                        maxBottom = -1
+                        Set bottomMostTimeline = Nothing
+                        For Each timelineTable In sld.Shapes
+                            If timelineTable.Name = TABLE_TIMLINE Or timelineTable.Name = TABLE_TIMELINE Or _
+                               timelineTable.Name = TABLE_TIMELINE_1 Or timelineTable.Name = TABLE_TIMELINE_2 Or _
+                               timelineTable.Name = TABLE_TIMELINE_3 Then
+                                If timelineTable.Top + timelineTable.Height > maxBottom Then
+                                    maxBottom = timelineTable.Top + timelineTable.Height
+                                    Set bottomMostTimeline = timelineTable
+                                End If
+                            End If
+                        Next timelineTable
+                        
+                        ' Resize shape để điểm bottom trùng với điểm bottom thấp nhất
+                        If Not bottomMostTimeline Is Nothing Then
+                            shp.Height = (bottomMostTimeline.Top + bottomMostTimeline.Height) - shp.Top
+                        End If
+                        Exit For
+                    End If
+                Next shp
+            End If
+        Next i
+    End If
+    
+    ' Căn giữa theo chiều ngang (Align Center) cho tất cả bảng
+    For i = 1 To ppt.Slides.Count
+        Set sld = ppt.Slides(i)
+        For Each shp In sld.Shapes
+            If shp.Name = TABLE_TIEU_DE Or shp.Name = TABLE_TIMLINE Or _
+               shp.Name = TABLE_TIMELINE Or shp.Name = TABLE_TIMELINE_1 Or _
+               shp.Name = TABLE_TIMELINE_2 Or shp.Name = TABLE_TIMELINE_3 Or _
+               shp.Name = TABLE_TIMLINE_2 Then
+                shp.Left = (sld.Master.Width - shp.Width) / 2
+            End If
+        Next shp
+    Next i
+    
+    ' Đưa nhóm "0. Group thanh Now" lên trên cùng
+    For i = 1 To ppt.Slides.Count
+        Set sld = ppt.Slides(i)
+        For Each shp In sld.Shapes
+            If shp.Name = GROUP_NAME Then
+                shp.ZOrder msoBringToFront
+            End If
+        Next shp
+    Next i
+    
+    ' Chạy đoạn code di chuyển "0. Group thanh Now" theo ngày nhập
+    Call DiChuyenGroupThanhNow
+    
+    ' Tìm slide đầu tiên chứa group "0. Group thanh Now" và lưu vị trí ngang (Left)
+    found = False
+    For i = 1 To ppt.Slides.Count
+        Set sld = ppt.Slides(i)
+        For Each shp In sld.Shapes
+            If shp.Name = GROUP_NAME Then
+                groupNowLeftPosition = shp.Left ' Lưu vị trí ngang
+                groupNowSlideIndex = i ' Lưu vị trí slide
+                found = True
+                Exit For
+            End If
+        Next shp
+        If found Then Exit For
+    Next i
+    
+    ' Cập nhật vị trí ngang của group "0. Group thanh Now" từ slide tiếp theo
+    If found Then
+        For i = groupNowSlideIndex + 1 To ppt.Slides.Count
+            Set sld = ppt.Slides(i)
+            For Each shp In sld.Shapes
+                If shp.Name = GROUP_NAME Then
+                    shp.Left = groupNowLeftPosition ' Cập nhật vị trí ngang
+                End If
+            Next shp
+        Next i
+    End If
+    
+    ' Kiểm tra các slide có nhiều hơn một "0. Group thanh Now"
+    Call CheckMultipleGroupNow
+    
+    MsgBox "Hoan thanh canh chinh Timescale va di chuyen " & GROUP_NAME, vbInformation
+End Sub
+
+Private Sub ChangeGroupName()
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim hasTable As Boolean
+    
+    ' Duyet qua tung slide trong presentation
+    For Each sld In ActivePresentation.Slides
+        hasTable = False
+        ' Kiem tra xem slide co table tieu de khong
+        For Each shp In sld.Shapes
+            If shp.Name = TABLE_TIEU_DE Then
+                hasTable = True
+                Exit For
+            End If
+        Next shp
+        
+        ' Neu slide co table tieu de, kiem tra group
+        If hasTable Then
+            For Each shp In sld.Shapes
+                ' Kiem tra shape co phai la group va thoa dieu kien kich thuoc
+                If shp.Type = msoGroup Then
+                    If shp.Height / 28.346 > MIN_HEIGHT And _
+                       shp.Width / 28.346 >= MIN_WIDTH And _
+                       shp.Width / 28.346 <= MAX_WIDTH Then
+                        ' Doi ten group
+                        shp.Name = GROUP_NAME
+                    End If
+                End If
+            Next shp
+        End If
+    Next sld
+End Sub
+
+Private Sub AlignGroupItems()
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim grp As Shape
+    Dim hasTable As Boolean
+    Dim hasGroup As Boolean
+    Dim shpRange As ShapeRange
+    Dim i As Long
+    Dim groupItems() As Shape
+    
+    ' Duyet qua tung slide trong presentation
+    For Each sld In ActivePresentation.Slides
+        hasTable = False
+        hasGroup = False
+        Set grp = Nothing
+        
+        ' Kiem tra xem slide co table tieu de va group khong
+        For Each shp In sld.Shapes
+            If shp.Name = TABLE_TIEU_DE Then
+                hasTable = True
+            End If
+            If shp.Name = GROUP_NAME Then
+                hasGroup = True
+                Set grp = shp
+            End If
+            If hasTable And hasGroup Then Exit For
+        Next shp
+        
+        ' Neu slide co ca table tieu de va group, tien hanh align
+        If hasTable And hasGroup Then
+            ' Tao mang de luu cac thanh phan trong group
+            ReDim groupItems(0 To grp.GroupItems.Count - 1)
+            For i = 1 To grp.GroupItems.Count
+                Set groupItems(i - 1) = grp.GroupItems(i)
+            Next i
+            
+            ' Lay ShapeRange tu mang cac thanh phan
+            Set shpRange = sld.Shapes.Range(Array(groupItems(0).Name))
+            For i = 1 To UBound(groupItems)
+                Set shpRange = sld.Shapes.Range(Array(shpRange.Name, groupItems(i).Name))
+            Next i
+            
+            ' Can giua theo chieu ngang so voi nhau (Align Center)
+            If Not shpRange Is Nothing Then
+                shpRange.Align msoAlignCenters, msoFalse
+            End If
+        End If
+    Next sld
+End Sub
+
+Private Sub DiChuyenGroupThanhNow()
+    ' ===== CAU HINH TEN CAC DOI TUONG =====
+    Dim tenTable As String: tenTable = TABLE_TIEU_DE
+    Dim tenSelectionNOW As String: tenSelectionNOW = GROUP_NAME
+    ' =====================================
+    
+    Dim pres As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim table As Shape
+    Dim selectionNOW As Shape
+    Dim found As Boolean
+    Dim i As Integer
+    Dim j As Integer
+    
+    ' Bien de luu toa do
+    Dim horizontalPhai As Single
+    Dim horizontalTrai As Single
+    Dim viTriMoi As Single
+    
+    ' Bien thoi gian
+    Dim ngayNhap As Integer
+    Dim thangNhap As Integer
+    Dim namNhap As Integer
+    Dim soNgayTrongThang As Integer
+    Dim chuoiThang As String
+    Dim cotThang As Integer
+    Dim sumWidthBefore As Single
+    
+    ' Lay presentation hien tai
+    Set pres = ActivePresentation
+    found = False
+    cotThang = 0
+    
+    ' Tim slide chua cac doi tuong can thiet
+    For i = 1 To pres.Slides.Count
+        Set sld = pres.Slides(i)
+        
+        ' Reset cac bien tim kiem
+        Set table = Nothing
+        Set selectionNOW = Nothing
+        
+        ' Tim cac doi tuong trong slide hien tai theo ten (Name property)
+        For Each shp In sld.Shapes
+            Select Case shp.Name
+                Case tenTable
+                    Set table = shp
+                Case tenSelectionNOW
+                    Set selectionNOW = shp
+            End Select
+        Next shp
+        
+        ' Kiem tra xem da tim thay du 2 doi tuong chua
+        If Not table Is Nothing And Not selectionNOW Is Nothing Then
+            found = True
+            Exit For
+        End If
+    Next i
+    
+    ' Neu khong tim thay slide phu hop
+    If Not found Then
+        MsgBox "Khong tim thay slide chua du selection '" & tenSelectionNOW & "' va bang '" & tenTable & "'." & vbCrLf & _
+               "Vui long kiem tra ten cua cac doi tuong trong slide.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Kiem tra neu bang la table
+    If table.Type <> msoTable Then
+        MsgBox "Doi tuong '" & tenTable & "' khong phai la bang (Table).", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Kiem tra xem bang co it nhat 2 hang
+    If table.Table.Rows.Count < 2 Then
+        MsgBox "Bang '" & tenTable & "' khong co du 2 hang de kiem tra chuoi thang.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Hop thoai nhap ngay
+    Dim inputDate As String
+    inputDate = InputBox("Vui long nhap ngay muon di chuyen 0. Group thanh Now (dinh dang: DD/MM/YYYY)")
+    
+    If inputDate = "" Then
+        MsgBox "Ban da huy nhap ngay.", vbInformation
+        Exit Sub
+    End If
+    
+    ' Phan tich ngay nhap
+    Dim parts() As String
+    parts = Split(inputDate, "/")
+    If UBound(parts) <> 2 Then
+        MsgBox "Dinh dang ngay khong dung. Vui long nhap theo DD/MM/YYYY.", vbExclamation
+        Exit Sub
+    End If
+    
+    On Error GoTo ErrorHandler
+    ngayNhap = CInt(parts(0))
+    thangNhap = CInt(parts(1))
+    namNhap = CInt(parts(2))
+    
+    ' Kiem tra tinh hop le cua ngay thang
+    If thangNhap < 1 Or thangNhap > 12 Or ngayNhap < 1 Or ngayNhap > 31 Or namNhap < 1900 Or namNhap > 9999 Then
+        MsgBox "Ngay thang nam khong hop le.", vbExclamation
+        Exit Sub
+    End If
+    
+    chuoiThang = "T" & thangNhap
+    
+    ' Tim cot trong hang thu 2 co chuoi tuong ung thang
+    For j = 1 To table.Table.Columns.Count
+        Dim cellText As String
+        cellText = table.Table.Cell(2, j).Shape.TextFrame.TextRange.Text
+        If Trim(cellText) = chuoiThang Then
+            cotThang = j
+            Exit For
+        End If
+    Next j
+    
+    ' Neu khong tim thay cot tuong ung
+    If cotThang = 0 Then
+        MsgBox "Khong tim thay cot co chuoi '" & chuoiThang & "' trong hang thu 2 cua bang '" & tenTable & "'.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Tinh tong chieu rong cac cot truoc cot thang
+    sumWidthBefore = 0
+    For j = 1 To cotThang - 1
+        sumWidthBefore = sumWidthBefore + table.Table.Columns(j).Width
+    Next j
+    
+    ' Lay toa do mep trai va mep phai cua cot (khong dung trung tam, ma dung mep truc tiep)
+    horizontalTrai = table.Left + sumWidthBefore
+    horizontalPhai = horizontalTrai + table.Table.Columns(cotThang).Width
+    
+    ' Tinh so ngay trong thang da nhap
+    If thangNhap = 12 Then
+        soNgayTrongThang = Day(DateSerial(namNhap + 1, 1, 1) - 1)
+    Else
+        soNgayTrongThang = Day(DateSerial(namNhap, thangNhap + 1, 1) - 1)
+    End If
+    
+    ' Kiem tra ngay nhap co vuot qua so ngay trong thang khong
+    If ngayNhap > soNgayTrongThang Then
+        MsgBox "Ngay " & ngayNhap & " vuot qua so ngay trong thang (" & soNgayTrongThang & ").", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Kiem tra truong hop ngay dac biet (14 cho thang 28 ngay, 15 cho thang 30/31 ngay)
+    If (soNgayTrongThang = 28 And ngayNhap = 14) Or _
+       ((soNgayTrongThang = 30 Or soNgayTrongThang = 31) And ngayNhap = 15) Then
+        ' Di chuyen 0. Group thanh Now den chinh giua cot
+        viTriMoi = (horizontalTrai + horizontalPhai) / 2
+    Else
+        ' Tinh vi tri moi cho selection 0. Group thanh Now
+        ' Cong thuc: vi tri = Trai + (Phai - Trai) * (ngay nhap - 1) / (so ngay trong thang - 1)
+        If soNgayTrongThang > 1 Then
+            viTriMoi = horizontalTrai + (horizontalPhai - horizontalTrai) * (ngayNhap - 1) / (soNgayTrongThang - 1)
+        Else
+            ' Truong hop dac biet (thang chi co 1 ngay - khong the xay ra thuc te)
+            viTriMoi = horizontalTrai
+        End If
+    End If
+    
+    ' Di chuyen selection 0. Group thanh Now den vi tri moi (giu nguyen trung tam)
+    selectionNOW.Left = viTriMoi - selectionNOW.Width / 2
+    
+    ' Thong bao ket qua
+    MsgBox "Da di chuyen selection '" & tenSelectionNOW & "' thanh cong!" & vbCrLf & _
+           "Ngay da nhap: " & ngayNhap & "/" & thangNhap & "/" & namNhap & vbCrLf & _
+           "So ngay trong thang: " & soNgayTrongThang & vbCrLf & _
+           "Cot thang: " & chuoiThang & " (cot " & cotThang & ")" & vbCrLf & _
+           "Vi tri moi (trung tam): " & Round(viTriMoi, 2) & " pts", vbInformation
+    
+    Exit Sub
+    
+ErrorHandler:
+    MsgBox "Loi xay ra khi phan tich ngay. Vui long kiem tra dinh dang.", vbExclamation
+    Exit Sub
+End Sub
+
+Private Sub CheckMultipleGroupNow()
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim slideIndices() As Long
+    Dim groupCount As Long
+    Dim i As Long
+    Dim index As Long
+    Dim msg As String
+    
+    ' Khởi tạo mảng để lưu chỉ số slide có nhiều group
+    ReDim slideIndices(0 To ActivePresentation.Slides.Count - 1)
+    index = 0
+    
+    ' Duyệt qua tất cả các slide
+    For i = 1 To ActivePresentation.Slides.Count
+        Set sld = ActivePresentation.Slides(i)
+        groupCount = 0
+        
+        ' Đếm số shape "0. Group thanh Now" trong slide
+        For Each shp In sld.Shapes
+            If shp.Name = GROUP_NAME Then
+                groupCount = groupCount + 1
+            End If
+        Next shp
+        
+        ' Nếu có nhiều hơn 1 group, lưu chỉ số slide
+        If groupCount > 1 Then
+            slideIndices(index) = i
+            index = index + 1
+        End If
+    Next i
+    
+    ' Nếu có slide vi phạm, tạo thông báo
+    If index > 0 Then
+        msg = "Kiem tra lai Slide co nhieu '" & GROUP_NAME & "': "
+        For i = 0 To index - 1
+            msg = msg & "(" & (i + 1) & ") Slide " & slideIndices(i) & "; "
+        Next i
+        ' Xóa dấu chấm phẩy cuối
+        msg = Left(msg, Len(msg) - 2)
+        MsgBox msg, vbExclamation, "Canh bao"
+    End If
+End Sub

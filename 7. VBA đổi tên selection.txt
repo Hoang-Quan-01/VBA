@@ -1,0 +1,60 @@
+Option Explicit
+
+Sub RenameShapes()
+    Dim ppt As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim oldName As String
+    Dim newName As String
+    Dim changeCount As Long
+    
+    ' Lấy tham chiếu đến bài thuyết trình hiện tại
+    Set ppt = ActivePresentation
+    
+    ' Hiển thị hộp thoại để nhập tên selection hiện tại
+    oldName = InputBox("Nhap ten selection hien tai can doi:", "Nhap ten cu")
+    
+    ' Kiểm tra nếu người dùng hủy hoặc không nhập
+    If oldName = "" Then
+        MsgBox "Ban da huy hoac khong nhap ten selection hien tai!", vbExclamation, "Thong bao"
+        Exit Sub
+    End If
+    
+    ' Hiển thị hộp thoại để nhập tên selection mới
+    newName = InputBox("Nhap ten moi cho selection:", "Nhap ten moi")
+    
+    ' Kiểm tra nếu người dùng hủy hoặc không nhập
+    If newName = "" Then
+        MsgBox "Ban da huy hoac khong nhap ten selection moi!", vbExclamation, "Thong bao"
+        Exit Sub
+    End If
+    
+    ' Kiểm tra xem tên mới có trùng với tên cũ không
+    If oldName = newName Then
+        MsgBox "Ten moi khong duoc trung ten voi ten cu!", vbExclamation, "Thong bao"
+        Exit Sub
+    End If
+    
+    ' Khởi tạo biến đếm số lượng shape được đổi tên
+    changeCount = 0
+    
+    ' Duyệt qua tất cả các slide
+    For Each sld In ppt.Slides
+        ' Duyệt qua tất cả các shape trong slide
+        For Each shp In sld.Shapes
+            ' Kiểm tra xem tên shape có khớp với tên cũ không
+            If shp.Name = oldName Then
+                ' Đổi tên shape
+                shp.Name = newName
+                changeCount = changeCount + 1
+            End If
+        Next shp
+    Next sld
+    
+    ' Hiển thị thông báo kết quả
+    If changeCount > 0 Then
+        MsgBox "Da doi ten thanh cong " & changeCount & " shape tu '" & oldName & "' thanh '" & newName & "'!", vbInformation, "Hoàn thành"
+    Else
+        MsgBox "Khong tim thay selection nao co ten '" & oldName & "' trong cac slide!", vbExclamation, "Thong bao"
+    End If
+End Sub

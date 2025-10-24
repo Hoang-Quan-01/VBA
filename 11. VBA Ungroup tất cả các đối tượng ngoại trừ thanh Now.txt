@@ -1,0 +1,69 @@
+Sub UngroupAllExceptSpecial()
+    ' ========== HANG SO ==========
+    Const SPECIAL_GROUP_NAME As String = "0. Group thanh Now"
+    Const TABLE_1 As String = "0. Table Timline"
+    Const TABLE_2 As String = "0. Table Timeline"
+    Const TABLE_3 As String = "0. Table Tieu de"
+    
+    ' ========== BIEN DEM ==========
+    Dim totalSlides As Long, totalProcessed As Long, slideIndex As Long, loopCount As Long
+    totalSlides = ActivePresentation.Slides.Count
+    totalProcessed = 0
+    loopCount = 0
+    
+    Do While True
+        loopCount = loopCount + 1
+        Dim processedInLoop As Long
+        processedInLoop = 0
+        
+        ' ========== DUYET TAT CA SLIDE ==========
+        For slideIndex = 1 To totalSlides
+            Dim currentSlide As Slide
+            Set currentSlide = ActivePresentation.Slides(slideIndex)
+            
+            ' 🔥 KIEM TRA SLIDE CO TABLE DUNG TEN KHONG
+            Dim hasTargetTable As Boolean
+            hasTargetTable = False
+            
+            Dim shapeIndex As Long
+            For shapeIndex = 1 To currentSlide.Shapes.Count
+                Dim checkShape As Shape
+                Set checkShape = currentSlide.Shapes(shapeIndex)
+                
+                If checkShape.HasTable Then
+                    If checkShape.Name = TABLE_1 Or checkShape.Name = TABLE_2 Or checkShape.Name = TABLE_3 Then
+                        hasTargetTable = True
+                        Exit For
+                    End If
+                End If
+            Next shapeIndex
+            
+            ' 🔥 CHI XU LY SLIDE CO TABLE DUNG TEN
+            If hasTargetTable Then
+                For shapeIndex = 1 To currentSlide.Shapes.Count
+                    Dim currentShape As Shape
+                    Set currentShape = currentSlide.Shapes(shapeIndex)
+                    
+                    If currentShape.Type = msoGroup Then
+                        If currentShape.Name <> SPECIAL_GROUP_NAME Then
+                            Dim oldGroupName As String
+                            oldGroupName = currentShape.Name
+                            
+                            currentShape.Ungroup
+                            processedInLoop = processedInLoop + 1
+                            totalProcessed = totalProcessed + 1
+                            
+                            Debug.Print "Lap " & loopCount & ", Slide " & slideIndex & ": Ungroup '" & oldGroupName & "' (co " & TABLE_1 & "/" & TABLE_2 & "/" & TABLE_3 & ")"
+                        End If
+                    End If
+                Next shapeIndex
+            End If
+        Next slideIndex
+        
+        If processedInLoop = 0 Then Exit Do
+        Debug.Print "--- Lap " & loopCount & " hoan thanh: " & processedInLoop & " group ---"
+    Loop
+    
+    MsgBox "Hoan thanh!" & vbCrLf & "Tong ungroup: " & totalProcessed & " group" & vbCrLf & "Tong slide: " & totalSlides & vbCrLf & "Lap: " & loopCount & " lan" & vbCrLf & "Giu lai: " & SPECIAL_GROUP_NAME & vbCrLf & "Chi xu ly slide co: " & TABLE_1 & "/" & TABLE_2 & "/" & TABLE_3, vbInformation, "Ket qua"
+    Set currentSlide = Nothing
+End Sub

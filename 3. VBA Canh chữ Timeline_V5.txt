@@ -1,0 +1,439 @@
+Sub LogicTheoTables()
+    Dim pres As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim selectedShapesAboveBracket As New Collection
+    Dim selectedShapesAboveNoBracket As New Collection
+    Dim selectedShapesBelowNoBracket As New Collection
+    Dim selectedShapesBelowBracket As New Collection
+    Dim i As Integer, j As Integer
+    Dim fontSize As Single ' Khai báo fontSize để kiểm tra kích thước font
+    
+    ' Đặt các thông số (đơn vị points, 1cm = 28.3464 points)
+    Const maxTableHeight As Single = 4.5354 ' 0.16cm
+    Const maxLineHeightForRegions As Single = 2.83464 ' 0.1cm
+    Const maxPictureHeight As Single = 4.25196 ' 0.15cm
+    Const selectionHeight As Single = 68.03136 ' 2.4cm
+    Const minDistanceFromCenter As Single = 8.50392 ' 0.3cm (khoảng cách tối thiểu từ tâm)
+    Const marginValue As Single = 3.685032 ' 0.13cm (cho font size >= 9 hoặc lỗi)
+    Const smallMarginValue As Single = 1.41732 ' 0.05cm (cho font size < 9)
+    Const smallFontSizeThreshold As Single = 9 ' Font size nhỏ hơn 9
+    Const spacingDistanceAbove As Single = 2.83464 ' 0.1cm (cho shape chứa "[" hoặc "]" ở vùng trên, font size >= 9)
+    Const spacingDistanceAboveNoBracket As Single = 7.0866 ' 0.25cm (cho shape không chứa "[" hoặc "]" ở vùng trên hoặc dưới, font size < 9)
+    Const spacingDistanceBelowBracket As Single = 11.33856 ' 0.4cm (cho shape không chứa "[" hoặc "]" ở vùng dưới, font size >= 9)
+    Const spacingDistanceAboveForSmallFont As Single = 1.700784 ' 0.06cm (cho shape chứa "[" hoặc "]" ở vùng trên, font size < 9)
+    Const spacingDistanceAboveNoBracketForSmallFont As Single = 4.25196 ' 0.15cm (cho shape không chứa "[" hoặc "]" ở vùng trên, font size < 9)
+    Const spacingDistanceBelowBracketForSmallFont As Single = 8.50392 ' 0.3cm (cho shape không chứa "[" hoặc "]" ở vùng dưới, font size < 9)
+    Const spacingDistanceBelowNoBracket As Single = 1.133856 ' 0.04cm (cho shape chứa "[" hoặc "]" ở vùng dưới, font size < 9)
+    Const spacingDistanceBelowNoBracketLargeFont As Single = 11.33856 ' 0.4cm (cho shape không chứa "[" hoặc "]" ở vùng dưới, font size >= 9)
+    Const searchRange As Single = 56.6928 ' 2cm (phạm vi tìm kiếm shape chứa "[" hoặc "]")
+    Const maxMoveDistance As Single = 56.6928 ' 2cm (giới hạn di chuyển shape chứa "[" hoặc "]")
+    
+    On Error Resume Next
+    Set pres = ActivePresentation
+    If pres Is Nothing Then
+        MsgBox "Không thể truy cập Presentation!", vbCritical
+        Exit Sub
+    End If
+    On Error GoTo 0
+    
+    ' Duyệt từng Slide
+    For Each sld In pres.Slides
+        ' Bước 1: Ungroup tất cả các nhóm trong Slide
+        Dim hasGroups As Boolean
+        Do
+            hasGroups = False
+            For i = sld.Shapes.Count To 1 Step -1
+                Set shp = sld.Shapes(i)
+                If Not shp Is Nothing Then
+                    If shp.Type = msoGroup Then
+                        hasGroups = True
+                        shp.Ungroup
+                        Exit For ' Thoát vòng lặp để duyệt lại từ đầu
+                    End If
+                End If
+            Next i
+        Loop While hasGroups
+        
+        ' Bước 2: Xử lý Line, Shape, và Table
+        For i = 1 To sld.Shapes.Count
+            Set shp = sld.Shapes(i)
+            If Not shp Is Nothing Then
+                On Error Resume Next
+                If (shp.Type = msoLine And Abs(shp.Height) <= maxLineHeightForRegions) Or _
+                   ((shp.Type = msoPicture Or shp.Type = msoAutoShape) And shp.Height <= maxPictureHeight) Or _
+                   (shp.HasTable And shp.Height < maxTableHeight) Then
+                    
+                    ' Chuẩn hóa chiều cao cho Line
+                    If shp.Type = msoLine Then
+                        shp.Height = 0
+                    End If
+                    
+                    Set selectedShapesAboveBracket = New Collection
+                    Set selectedShapesAboveNoBracket = New Collection
+                    Set selectedShapesBelowNoBracket = New Collection
+                    Set selectedShapesBelowBracket = New Collection
+                    
+                    Dim objCenter As Single
+                    Dim objTop As Single
+                    Dim objBottom As Single
+                    objCenter = shp.Top + (shp.Height / 2)
+                    objTop = shp.Top
+                    objBottom = shp.Top + shp.Height
+                    
+                    ' Xác định vùng chọn phía trên
+                    Dim verticalMinAbove As Single
+                    Dim verticalMaxAbove As Single
+                    verticalMinAbove = objCenter - selectionHeight
+                    verticalMaxAbove = objCenter - minDistanceFromCenter
+                    
+                    ' Xác định vùng chọn phía dưới
+                    Dim verticalMinBelow As Single
+                    Dim verticalMaxBelow As Single
+                    verticalMinBelow = objCenter + minDistanceFromCenter
+                    verticalMaxBelow = objCenter + selectionHeight
+                    
+                    ' Tìm các shape trong vùng chọn phía trên và dưới
+                    For j = 1 To sld.Shapes.Count
+                        Dim nearbyShp As Shape
+                        Set nearbyShp = sld.Shapes(j)
+                        If Not nearbyShp Is Nothing Then
+                            ' Loại bỏ shape trùng loại với đối tượng đang xử lý
+                            If (shp.Type = msoLine And nearbyShp.Type <> msoLine) Or _
+                               ((shp.Type = msoPicture Or shp.Type = msoAutoShape) And nearbyShp.Type <> msoPicture And nearbyShp.Type <> msoAutoShape) Or _
+                               (shp.HasTable And Not nearbyShp.HasTable) Then
+                                If HasRealText(nearbyShp) Then
+                                    Dim shapeText As String
+                                    On Error Resume Next
+                                    shapeText = nearbyShp.TextFrame.TextRange.Text
+                                    On Error GoTo 0
+                                    If Len(shapeText) > 0 Then
+                                        Dim shapeBottom As Single
+                                        shapeBottom = nearbyShp.Top + nearbyShp.Height
+                                        If (InStr(shapeText, "[") > 0 Or InStr(shapeText, "]") > 0) And Len(shapeText) > 9 Then
+                                            If nearbyShp.Top >= verticalMinAbove And nearbyShp.Top <= verticalMaxAbove Then
+                                                selectedShapesAboveBracket.Add nearbyShp
+                                            End If
+                                            If shapeBottom >= verticalMinBelow And shapeBottom <= verticalMaxBelow Then
+                                                selectedShapesBelowBracket.Add nearbyShp
+                                            End If
+                                        ElseIf InStr(shapeText, "[") = 0 And InStr(shapeText, "]") = 0 And Len(shapeText) > 12 Then
+                                            If nearbyShp.Top >= verticalMinAbove And nearbyShp.Top <= verticalMaxAbove Then
+                                                selectedShapesAboveNoBracket.Add nearbyShp
+                                            End If
+                                            If shapeBottom >= verticalMinBelow And shapeBottom <= verticalMaxBelow Then
+                                                selectedShapesBelowNoBracket.Add nearbyShp
+                                            End If
+                                        End If
+                                    End If
+                                End If
+                            End If
+                        End If
+                    Next j
+                    
+                    ' Xử lý vùng phía trên - Shape chứa "[" hoặc "]"
+                    Dim refTopAbove As Single
+                    If selectedShapesAboveBracket.Count > 0 Then
+                        For j = 1 To selectedShapesAboveBracket.Count
+                            With selectedShapesAboveBracket(j)
+                                If .HasTextFrame And .TextFrame.HasText Then
+                                    .TextFrame.TextRange.Text = RemoveTrailingEnters(.TextFrame.TextRange.Text)
+                                    fontSize = 0 ' Đặt lại giá trị fontSize trước khi sử dụng
+                                    On Error Resume Next
+                                    If Len(Trim(.TextFrame.TextRange.Text)) > 0 Then
+                                        fontSize = .TextFrame.TextRange.Font.Size
+                                    End If
+                                    On Error GoTo 0
+                                    If fontSize > 0 And fontSize < smallFontSizeThreshold Then
+                                        .TextFrame.AutoSize = ppAutoSizeShapeToFitText
+                                        .TextFrame.VerticalAnchor = msoAnchorMiddle
+                                        If .TextFrame2.HasText Then
+                                            .TextFrame2.MarginTop = smallMarginValue
+                                            .TextFrame2.MarginBottom = smallMarginValue
+                                        End If
+                                    Else
+                                        .TextFrame.AutoSize = ppAutoSizeShapeToFitText
+                                        .TextFrame.VerticalAnchor = msoAnchorMiddle
+                                        If .TextFrame2.HasText Then
+                                            .TextFrame2.MarginTop = marginValue
+                                            .TextFrame2.MarginBottom = marginValue
+                                        End If
+                                    End If
+                                End If
+                            End With
+                        Next j
+                        For j = 1 To selectedShapesAboveBracket.Count
+                            With selectedShapesAboveBracket(j)
+                                fontSize = 0
+                                On Error Resume Next
+                                If Len(Trim(.TextFrame.TextRange.Text)) > 0 Then
+                                    fontSize = .TextFrame.TextRange.Font.Size
+                                End If
+                                On Error GoTo 0
+                                If fontSize > 0 And fontSize < smallFontSizeThreshold Then
+                                    .Top = objTop - .Height - spacingDistanceAboveForSmallFont
+                                Else
+                                    .Top = objTop - .Height - spacingDistanceAbove
+                                End If
+                            End With
+                        Next j
+                        refTopAbove = objTop
+                        For j = 1 To selectedShapesAboveBracket.Count
+                            If selectedShapesAboveBracket(j).Top < refTopAbove Then
+                                refTopAbove = selectedShapesAboveBracket(j).Top
+                            End If
+                        Next j
+                    Else
+                        refTopAbove = 0
+                    End If
+                    
+                    ' Xử lý vùng phía trên - Shape không chứa "[" hoặc "]"
+                    If selectedShapesAboveNoBracket.Count > 0 And refTopAbove > 0 Then
+                        For j = 1 To selectedShapesAboveNoBracket.Count
+                            With selectedShapesAboveNoBracket(j)
+                                If .HasTextFrame And .TextFrame.HasText Then
+                                    .TextFrame.TextRange.Text = RemoveTrailingEnters(.TextFrame.TextRange.Text)
+                                    fontSize = 0 ' Đặt lại giá trị fontSize trước khi sử dụng
+                                    On Error Resume Next
+                                    If Len(Trim(.TextFrame.TextRange.Text)) > 0 Then
+                                        fontSize = .TextFrame.TextRange.Font.Size
+                                    End If
+                                    On Error GoTo 0
+                                    If fontSize > 0 And fontSize < smallFontSizeThreshold Then
+                                        .TextFrame.AutoSize = ppAutoSizeShapeToFitText
+                                        .TextFrame.VerticalAnchor = msoAnchorMiddle
+                                        If .TextFrame2.HasText Then
+                                            .TextFrame2.MarginTop = smallMarginValue
+                                            .TextFrame2.MarginBottom = smallMarginValue
+                                        End If
+                                    Else
+                                        .TextFrame.AutoSize = ppAutoSizeShapeToFitText
+                                        .TextFrame.VerticalAnchor = msoAnchorMiddle
+                                        If .TextFrame2.HasText Then
+                                            .TextFrame2.MarginTop = marginValue
+                                            .TextFrame2.MarginBottom = marginValue
+                                        End If
+                                    End If
+                                End If
+                            End With
+                        Next j
+                        For j = 1 To selectedShapesAboveNoBracket.Count
+                            With selectedShapesAboveNoBracket(j)
+                                fontSize = 0
+                                On Error Resume Next
+                                If Len(Trim(.TextFrame.TextRange.Text)) > 0 Then
+                                    fontSize = .TextFrame.TextRange.Font.Size
+                                End If
+                                On Error GoTo 0
+                                If fontSize > 0 And fontSize < smallFontSizeThreshold Then
+                                    .Top = refTopAbove - .Height + spacingDistanceAboveNoBracketForSmallFont
+                                Else
+                                    .Top = refTopAbove - .Height + spacingDistanceAboveNoBracket
+                                End If
+                            End With
+                        Next j
+                    End If
+                    
+                    ' Xử lý vùng phía dưới - Shape chứa "[" hoặc "]"
+                    If selectedShapesBelowBracket.Count > 0 Then
+                        For j = 1 To selectedShapesBelowBracket.Count
+                            With selectedShapesBelowBracket(j)
+                                If .HasTextFrame And .TextFrame.HasText Then
+                                    .TextFrame.TextRange.Text = RemoveTrailingEnters(.TextFrame.TextRange.Text)
+                                    fontSize = 0 ' Đặt lại giá trị fontSize trước khi sử dụng
+                                    On Error Resume Next
+                                    If Len(Trim(.TextFrame.TextRange.Text)) > 0 Then
+                                        fontSize = .TextFrame.TextRange.Font.Size
+                                    End If
+                                    On Error GoTo 0
+                                    If fontSize > 0 And fontSize < smallFontSizeThreshold Then
+                                        .TextFrame.AutoSize = ppAutoSizeShapeToFitText
+                                        .TextFrame.VerticalAnchor = msoAnchorMiddle
+                                        If .TextFrame2.HasText Then
+                                            .TextFrame2.MarginTop = smallMarginValue
+                                            .TextFrame2.MarginBottom = smallMarginValue
+                                        End If
+                                        .Top = objBottom + spacingDistanceBelowNoBracket
+                                    Else
+                                        .TextFrame.AutoSize = ppAutoSizeShapeToFitText
+                                        .TextFrame.VerticalAnchor = msoAnchorMiddle
+                                        If .TextFrame2.HasText Then
+                                            .TextFrame2.MarginTop = marginValue
+                                            .TextFrame2.MarginBottom = marginValue
+                                        End If
+                                        .Top = objBottom
+                                    End If
+                                End If
+                            End With
+                        Next j
+                    End If
+                    
+                    ' Xử lý vùng phía dưới - Shape không chứa "[" hoặc "]"
+                    If selectedShapesBelowBracket.Count > 0 Then
+                        For j = 1 To selectedShapesBelowNoBracket.Count
+                            Dim noBracketShp As Shape
+                            Set noBracketShp = selectedShapesBelowNoBracket(j)
+                            Dim noBracketBottom As Single
+                            noBracketBottom = noBracketShp.Top + noBracketShp.Height
+                            Dim noBracketCenterX As Single
+                            Dim noBracketCenterY As Single
+                            noBracketCenterX = noBracketShp.Left + noBracketShp.Width / 2
+                            noBracketCenterY = noBracketBottom
+                            
+                            Dim closestBracketShp As Shape
+                            Dim minDistance As Single
+                            Set closestBracketShp = Nothing
+                            minDistance = searchRange + 1
+                            
+                            For Each shp In selectedShapesBelowBracket
+                                If HasRealText(shp) Then
+                                    Dim nearbyText As String
+                                    On Error Resume Next
+                                    nearbyText = shp.TextFrame.TextRange.Text
+                                    On Error GoTo 0
+                                    If Len(nearbyText) > 9 And (InStr(nearbyText, "[") > 0 Or InStr(nearbyText, "]") > 0) Then
+                                        Dim nearbyCenterX As Single
+                                        Dim nearbyCenterY As Single
+                                        nearbyCenterX = shp.Left + shp.Width / 2
+                                        nearbyCenterY = shp.Top + shp.Height / 2
+                                        Dim distance As Single
+                                        distance = Sqr((noBracketCenterX - nearbyCenterX) ^ 2 + (noBracketCenterY - nearbyCenterY) ^ 2)
+                                        If distance <= searchRange And distance < minDistance Then
+                                            minDistance = distance
+                                            Set closestBracketShp = shp
+                                        End If
+                                    End If
+                                End If
+                            Next shp
+                            
+                            If Not closestBracketShp Is Nothing Then
+                                With noBracketShp
+                                    If .HasTextFrame And .TextFrame.HasText Then
+                                        .TextFrame.TextRange.Text = RemoveTrailingEnters(.TextFrame.TextRange.Text)
+                                        fontSize = 0 ' Đặt lại giá trị fontSize trước khi sử dụng
+                                        On Error Resume Next
+                                        If Len(Trim(.TextFrame.TextRange.Text)) > 0 Then
+                                            fontSize = .TextFrame.TextRange.Font.Size
+                                        End If
+                                        On Error GoTo 0
+                                        If fontSize > 0 And fontSize < smallFontSizeThreshold Then
+                                            .TextFrame.AutoSize = ppAutoSizeShapeToFitText
+                                            .TextFrame.VerticalAnchor = msoAnchorMiddle
+                                            If .TextFrame2.HasText Then
+                                                .TextFrame2.MarginTop = smallMarginValue
+                                                .TextFrame2.MarginBottom = smallMarginValue
+                                            End If
+                                        Else
+                                            .TextFrame.AutoSize = ppAutoSizeShapeToFitText
+                                            .TextFrame.VerticalAnchor = msoAnchorMiddle
+                                            If .TextFrame2.HasText Then
+                                                .TextFrame2.MarginTop = marginValue
+                                                .TextFrame2.MarginBottom = marginValue
+                                            End If
+                                        End If
+                                    End If
+                                    Dim originalTop As Single
+                                    originalTop = .Top
+                                    Dim newTop As Single
+                                    fontSize = 0
+                                    On Error Resume Next
+                                    If Len(Trim(.TextFrame.TextRange.Text)) > 0 Then
+                                        fontSize = .TextFrame.TextRange.Font.Size
+                                    End If
+                                    On Error GoTo 0
+                                    If fontSize > 0 And fontSize < smallFontSizeThreshold Then
+                                        newTop = objBottom + spacingDistanceAboveNoBracket
+                                    Else
+                                        newTop = objBottom + spacingDistanceBelowNoBracketLargeFont
+                                    End If
+                                    Dim moveDistance As Single
+                                    moveDistance = Abs(newTop - originalTop)
+                                    If moveDistance > maxMoveDistance Then
+                                        If newTop < originalTop Then
+                                            newTop = originalTop - maxMoveDistance
+                                        Else
+                                            newTop = originalTop + maxMoveDistance
+                                        End If
+                                    End If
+                                    .Top = newTop
+                                End With
+                            End If
+                        Next j
+                    End If
+                End If
+                On Error GoTo 0
+            End If
+        Next i
+    Next sld
+    
+    ' Bước 3: Regroup lại các nhóm
+    On Error Resume Next
+    Dim currentSlideIndex As Integer
+    currentSlideIndex = ActiveWindow.View.Slide.SlideIndex
+    For i = 1 To pres.Slides.Count
+        ActiveWindow.View.GotoSlide i
+        ActiveWindow.View.Slide.Shapes.SelectAll
+        If ActiveWindow.Selection.ShapeRange.Count > 0 Then
+            ActiveWindow.Selection.ShapeRange.Regroup
+        End If
+    Next i
+    ActiveWindow.View.GotoSlide currentSlideIndex
+    On Error GoTo 0
+    
+    ' Hiển thị thông báo hoàn thành
+    MsgBox "Đã hoàn thành các thao tác căn chỉnh!", vbInformation
+End Sub
+
+Function HasRealText(shp As Shape) As Boolean
+    On Error Resume Next
+    HasRealText = False
+    If shp.HasTextFrame Then
+        If shp.TextFrame.HasText Then
+            Dim rawText As String
+            rawText = shp.TextFrame.TextRange.Text
+            If Len(Trim(Replace(rawText, Chr(13), ""))) > 0 Then
+                HasRealText = True
+            End If
+        End If
+    End If
+    If shp.Type = msoGroup Then
+        Dim subShp As Shape
+        For Each subShp In shp.GroupItems
+            If HasRealText(subShp) Then
+                HasRealText = True
+                Exit For
+            End If
+        Next subShp
+    End If
+    On Error GoTo 0
+End Function
+
+Function RemoveTrailingEnters(text As String) As String
+    If Len(text) = 0 Then
+        RemoveTrailingEnters = text
+        Exit Function
+    End If
+    Dim lines() As String
+    lines = Split(text, Chr(13))
+    Dim validLines As New Collection
+    Dim i As Integer
+    If UBound(lines) >= 0 Then
+        validLines.Add lines(0)
+    End If
+    For i = 1 To UBound(lines)
+        Dim trimmedLine As String
+        trimmedLine = Trim(lines(i))
+        If Len(trimmedLine) > 0 Then
+            validLines.Add lines(i)
+        End If
+    Next i
+    Dim result As String
+    result = ""
+    For i = 1 To validLines.Count
+        If i > 1 Then
+            result = result & Chr(13)
+        End If
+        result = result & validLines(i)
+    Next i
+    RemoveTrailingEnters = result
+End Function

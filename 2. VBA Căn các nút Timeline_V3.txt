@@ -1,0 +1,351 @@
+Sub ASetTrinhBayTong()
+    ' Gọi chức năng thay đổi kích thước shape và picture
+    ResizeSmallShapes
+    
+    ' Gọi các chức năng căn chỉnh khác
+    UngroupAll
+    SetChieuCaoTable
+    LogicTheoLine
+    LogicTheoTables
+    RegroupAll
+    
+    MsgBox "Đã hoàn thành các thao tác căn chỉnh!", vbInformation
+End Sub
+
+Private Sub ResizeSmallShapes()
+    Dim pres As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim grpItems As Collection
+    Dim grp As Shape
+    Dim i As Long, j As Long
+    Dim shpData As Collection
+    Dim groupData As Collection
+    Dim slideGroups As Collection
+    
+    On Error Resume Next
+    Set pres = ActivePresentation
+    If pres Is Nothing Then
+        MsgBox "Không thể truy cập Presentation!", vbCritical
+        Exit Sub
+    End If
+    On Error GoTo 0
+    
+    Set groupData = New Collection
+    
+    ' Bước 1: Ungroup tất cả các nhóm trong tất cả slide và lưu thông tin nhóm
+    For Each sld In pres.Slides
+        Set slideGroups = New Collection
+        Dim hasGroups As Boolean
+        Do
+            hasGroups = False
+            For i = sld.Shapes.Count To 1 Step -1
+                Set shp = sld.Shapes(i)
+                If Not shp Is Nothing Then
+                    If shp.Type = msoGroup Then
+                        hasGroups = True
+                        Set shpData = New Collection
+                        For Each grpItem In shp.GroupItems
+                            shpData.Add Array(grpItem.Name, grpItem.Left, grpItem.Top, grpItem.Width, grpItem.Height)
+                        Next grpItem
+                        slideGroups.Add Array(shp.Name, shpData)
+                        shp.Ungroup
+                        Exit For
+                    End If
+                End If
+            Next i
+        Loop While hasGroups
+        groupData.Add slideGroups
+    Next sld
+    
+    ' Bước 2: Thay đổi kích thước các shape có chiều cao và chiều rộng < 0.6 cm
+    For Each sld In pres.Slides
+        For Each shp In sld.Shapes
+            If Not shp Is Nothing Then
+                If shp.Height < 0.6 * 28.3465 And shp.Width < 0.6 * 28.3465 Then ' Chuyển cm sang points (1 cm = 28.3465 points)
+                    shp.LockAspectRatio = msoFalse ' Tắt khóa tỷ lệ để thay đổi kích thước tự do
+                    shp.Height = 0.45 * 28.3465
+                    shp.Width = 0.45 * 28.3465
+                End If
+            End If
+        Next shp
+    Next sld
+    
+    ' Bước 3: Thay đổi kích thước các picture có chiều cao hoặc chiều rộng < 0.7 cm thành 0.6 cm
+    For Each sld In pres.Slides
+        For Each shp In sld.Shapes
+            If Not shp Is Nothing Then
+                If shp.Type = msoPicture And (shp.Height < 0.7 * 28.3465 Or shp.Width < 0.7 * 28.3465) Then ' Chuyển cm sang points
+                    shp.LockAspectRatio = msoFalse ' Tắt khóa tỷ lệ
+                    shp.Height = 0.6 * 28.3465
+                    shp.Width = 0.6 * 28.3465
+                End If
+            End If
+        Next shp
+    Next sld
+    
+    ' Bước 4: Regroup lại các nhóm dựa trên thông tin đã lưu
+    Dim slideIndex As Long
+    slideIndex = 1
+    For Each slideGroups In groupData
+        Set sld = pres.Slides(slideIndex)
+        For Each grpInfo In slideGroups
+            Dim groupName As String
+            Dim shapesToGroup As ShapeRange
+            groupName = grpInfo(0)
+            Set shpData = grpInfo(1)
+            
+            ' Tạo mảng chứa tên của các shape để nhóm lại
+            Dim shapeNames() As String
+            ReDim shapeNames(shpData.Count - 1)
+            j = 0
+            For Each shapeInfo In shpData
+                shapeNames(j) = shapeInfo(0)
+                j = j + 1
+            Next shapeInfo
+            
+            ' Nhóm lại các shape
+            If j > 0 Then
+                On Error Resume Next
+                Set shapesToGroup = sld.Shapes.Range(shapeNames)
+                If Not shapesToGroup Is Nothing Then
+                    Set grp = shapesToGroup.Group
+                    If Not grp Is Nothing Then
+                        grp.Name = groupName
+                    End If
+                End If
+                On Error GoTo 0
+            End If
+        Next grpInfo
+        slideIndex = slideIndex + 1
+    Next slideGroups
+End Sub
+
+Private Sub UngroupAll()
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim i As Integer
+    
+    For Each sld In ActivePresentation.Slides
+        For i = sld.Shapes.Count To 1 Step -1
+            Set shp = sld.Shapes(i)
+            If shp.Type = msoGroup Then
+                shp.Ungroup
+            End If
+        Next i
+    Next sld
+End Sub
+
+Private Sub SetChieuCaoTable()
+    On Error Resume Next
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim tbl As Table
+    Dim minHeightCm As Single
+    Dim minHeightPoints As Single
+    
+    minHeightCm = 0.13
+    minHeightPoints = minHeightCm * 28.3465
+    
+    For Each sld In ActivePresentation.Slides
+        For Each shp In sld.Shapes
+            If shp.HasTable Then
+                Set tbl = shp.Table
+                If shp.Height < minHeightPoints Then
+                    shp.Height = minHeightPoints
+                End If
+            End If
+        Next shp
+    Next sld
+End Sub
+
+Private Sub LogicTheoLine()
+    Dim pres As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim lineShapes As New Collection
+    Dim i As Integer, j As Integer
+    
+    ' Đặt các thông số (đơn vị points)
+    Const maxLineHeight As Single = 5.669 ' 0.2cm = 5.669 points
+    Const tolerance As Single = 14.1732 ' ~0.5cm
+    Const maxShapeHeight As Single = 21.2598 ' 0.75cm
+    
+    Set pres = ActivePresentation
+    
+    ' BƯỚC 1: Chuẩn hóa các đường thẳng (đặt Height = 0)
+    For Each sld In pres.Slides
+        For i = 1 To sld.Shapes.Count
+            Set shp = sld.Shapes(i)
+            
+            If shp.Type = msoLine Then
+                If Abs(shp.Height) < maxLineHeight Then
+                    shp.Height = 0
+                    lineShapes.Add shp
+                End If
+            End If
+        Next i
+    Next sld
+    
+    ' BƯỚC 2: Căn chỉnh các shape theo đường thẳng
+    For Each sld In pres.Slides
+        For Each shp In lineShapes
+            If shp.Parent Is sld Then
+                Dim lineY As Single: lineY = shp.Top
+                
+                For j = 1 To sld.Shapes.Count
+                    Dim targetShape As Shape
+                    Set targetShape = sld.Shapes(j)
+                    
+                    If targetShape.ID <> shp.ID And targetShape.Height < maxShapeHeight Then
+                        Dim isValidText As Boolean
+                        isValidText = True ' Mặc định hợp lệ (văn bản rỗng)
+                        
+                        If HasRealText(targetShape) Then
+                            Dim rawText As String
+                            On Error Resume Next
+                            rawText = targetShape.TextFrame.TextRange.Text
+                            On Error GoTo 0
+                            rawText = Trim(Replace(rawText, Chr(13), ""))
+                            If Len(rawText) > 3 Then
+                                isValidText = False ' Loại shape có văn bản > 3 ký tự
+                            End If
+                        End If
+                        
+                        If isValidText Then
+                            Dim shapeCenterY As Single
+                            shapeCenterY = targetShape.Top + targetShape.Height / 2
+                            
+                            If Abs(shapeCenterY - lineY) <= tolerance Then
+                                targetShape.Top = lineY - targetShape.Height / 2
+                            End If
+                        End If
+                    End If
+                Next j
+            End If
+        Next shp
+    Next sld
+End Sub
+
+Private Sub LogicTheoTables()
+    Dim pres As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim selectedShapes As New Collection
+    Dim i As Integer, j As Integer
+    
+    ' Đặt các thông số (đơn vị points)
+    Const minTableHeight As Single = 0.28346 ' 0.01cm
+    Const maxTableHeight As Single = 4.5354 ' 0.16cm
+    Const maxShapeHeight As Single = 21.2598 ' 0.75cm
+    Const verticalTolerance As Single = 14.1732 ' 0.5cm
+    
+    Set pres = ActivePresentation
+    
+    For Each sld In pres.Slides
+        For i = 1 To sld.Shapes.Count
+            Set shp = sld.Shapes(i)
+            
+            If shp.HasTable Then
+                If shp.Height > minTableHeight And shp.Height < maxTableHeight Then
+                    Set selectedShapes = New Collection
+                    selectedShapes.Add shp
+                    
+                    Dim tableCenter As Single
+                    tableCenter = shp.Top + (shp.Height / 2)
+                    
+                    Dim verticalMin As Single, verticalMax As Single
+                    verticalMin = shp.Top - verticalTolerance
+                    verticalMax = shp.Top + shp.Height + verticalTolerance
+                    
+                    For j = 1 To sld.Shapes.Count
+                        Dim nearbyShp As Shape
+                        Set nearbyShp = sld.Shapes(j)
+                        
+                        If Not (nearbyShp.HasTable And nearbyShp.Height > minTableHeight And _
+                               nearbyShp.Height < maxTableHeight And nearbyShp.Top = shp.Top) Then
+                            
+                            If nearbyShp.Height < maxShapeHeight Then
+                                Dim isValidText As Boolean
+                                isValidText = True ' Mặc định hợp lệ (văn bản rỗng)
+                                
+                                If HasRealText(nearbyShp) Then
+                                    Dim rawText As String
+                                    On Error Resume Next
+                                    rawText = nearbyShp.TextFrame.TextRange.Text
+                                    On Error GoTo 0
+                                    rawText = Trim(Replace(rawText, Chr(13), ""))
+                                    If Len(rawText) > 3 Then
+                                        isValidText = False ' Loại shape có văn bản > 3 ký tự
+                                    End If
+                                End If
+                                
+                                If isValidText Then
+                                    Dim shpCenter As Single
+                                    shpCenter = nearbyShp.Top + (nearbyShp.Height / 2)
+                                    
+                                    If (shpCenter >= verticalMin And shpCenter <= verticalMax) Then
+                                        selectedShapes.Add nearbyShp
+                                    End If
+                                End If
+                            End If
+                        End If
+                    Next j
+                    
+                    If selectedShapes.Count >= 2 Then
+                        For j = 2 To selectedShapes.Count
+                            With selectedShapes(j)
+                                .Top = tableCenter - (.Height / 2)
+                            End With
+                        Next j
+                    End If
+                End If
+            End If
+        Next i
+    Next sld
+End Sub
+
+Private Function HasRealText(shp As Shape) As Boolean
+    On Error Resume Next
+    HasRealText = False
+    
+    If shp.HasTextFrame Then
+        If shp.TextFrame.HasText Then
+            Dim rawText As String
+            rawText = shp.TextFrame.TextRange.Text
+            If Len(Trim(Replace(rawText, Chr(13), ""))) > 0 Then
+                HasRealText = True
+            End If
+        End If
+    End If
+    
+    If shp.Type = msoGroup Then
+        Dim subShp As Shape
+        For Each subShp In shp.GroupItems
+            If HasRealText(subShp) Then
+                HasRealText = True
+                Exit For
+            End If
+        Next subShp
+    End If
+    
+    On Error GoTo 0
+End Function
+
+Private Sub RegroupAll()
+    On Error Resume Next
+    Dim currentSlideIndex As Integer
+    Dim i As Integer
+    
+    currentSlideIndex = ActiveWindow.View.Slide.SlideIndex
+    
+    For i = 1 To ActivePresentation.Slides.Count
+        ActiveWindow.View.GotoSlide i
+        ActiveWindow.View.Slide.Shapes.SelectAll
+        If ActiveWindow.Selection.ShapeRange.Count > 0 Then
+            ActiveWindow.Selection.ShapeRange.Regroup
+        End If
+    Next i
+    
+    ActiveWindow.View.GotoSlide currentSlideIndex
+End Sub

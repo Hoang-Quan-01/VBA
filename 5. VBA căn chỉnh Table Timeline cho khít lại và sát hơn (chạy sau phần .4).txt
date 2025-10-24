@@ -1,0 +1,76 @@
+Sub AlignTablesVertically()
+    Dim pres As Presentation
+    Set pres = ActivePresentation
+    Dim sld As Slide
+    For Each sld In pres.Slides
+        ' Kiểm tra xem slide có chứa bảng "0. Table Tieu de" không
+        Dim hasTitleTable As Boolean
+        hasTitleTable = False
+        Dim shp As Shape
+        For Each shp In sld.Shapes
+            If shp.HasTable And shp.Name = "0. Table Tieu de" Then
+                hasTitleTable = True
+                Exit For
+            End If
+        Next shp
+        If Not hasTitleTable Then GoTo NextSlide
+        
+        ' Thu thập tất cả các bảng có tên "0. Table Timline" trong slide
+        Dim tables() As Shape
+        Dim tableCount As Integer
+        tableCount = 0
+        For Each shp In sld.Shapes
+            If shp.HasTable And shp.Name = "0. Table Timline" Then
+                tableCount = tableCount + 1
+            End If
+        Next shp
+        
+        If tableCount < 1 Then GoTo NextSlide ' Không thực hiện nếu không có bảng "0. Table Timline"
+        
+        ' Khởi tạo mảng để chứa các bảng "0. Table Timline"
+        ReDim tables(1 To tableCount)
+        Dim index As Integer
+        index = 1
+        For Each shp In sld.Shapes
+            If shp.HasTable And shp.Name = "0. Table Timline" Then
+                Set tables(index) = shp
+                index = index + 1
+            End If
+        Next shp
+        
+        ' Sắp xếp các bảng theo vị trí .Top (từ trên xuống dưới)
+        Dim i As Integer, j As Integer
+        Dim temp As Shape
+        For i = 1 To tableCount - 1
+            For j = i + 1 To tableCount
+                If tables(i).Top > tables(j).Top Then
+                    Set temp = tables(i)
+                    Set tables(i) = tables(j)
+                    Set tables(j) = temp
+                End If
+            Next j
+        Next i
+        
+        ' Tìm bảng "0. Table Tieu de" để xác định điểm bắt đầu căn chỉnh
+        Dim titleTable As Shape
+        Dim titleTableBottom As Single
+        For Each shp In sld.Shapes
+            If shp.HasTable And shp.Name = "0. Table Tieu de" Then
+                Set titleTable = shp
+                titleTableBottom = shp.Top + shp.Height
+                Exit For
+            End If
+        Next shp
+        
+        ' Căn chỉnh các bảng "0. Table Timline" sao cho .Top của bảng tiếp theo trùng với .Bottom của bảng trước đó
+        If tableCount >= 1 Then
+            ' Đặt bảng đầu tiên ngay dưới "0. Table Tieu de"
+            tables(1).Top = titleTableBottom
+            ' Căn chỉnh các bảng còn lại
+            For i = 2 To tableCount
+                tables(i).Top = tables(i - 1).Top + tables(i - 1).Height
+            Next i
+        End If
+NextSlide:
+    Next sld
+End Sub

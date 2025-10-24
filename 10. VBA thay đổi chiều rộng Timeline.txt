@@ -1,0 +1,47 @@
+Sub AdjustTableHeight()
+    ' ========== HANG SO (BIEN CAU HINH) ==========
+    Const OLD_HEIGHT_CM As Double = 0.25
+    Const NEW_HEIGHT_CM As Double = 0.13
+    Const MIN_WIDTH_CM As Double = 8
+    Const TABLE_NAME As String = "0. Table Line Timeline"
+    
+    ' ========== BIEN CHUYEN DOI ==========
+    Dim OLD_HEIGHT_PT As Double, NEW_HEIGHT_PT As Double, MIN_WIDTH_PT As Double
+    OLD_HEIGHT_PT = OLD_HEIGHT_CM * 28.3464567
+    NEW_HEIGHT_PT = NEW_HEIGHT_CM * 28.3464567
+    MIN_WIDTH_PT = MIN_WIDTH_CM * 28.3464567
+    
+    ' ========== BIEN DEM ==========
+    Dim totalSlides As Long, processedTables As Long, slideIndex As Long
+    totalSlides = ActivePresentation.Slides.Count
+    processedTables = 0
+    
+    ' ========== DUYET SLIDE ==========
+    For slideIndex = 1 To totalSlides
+        Dim currentSlide As Slide
+        Set currentSlide = ActivePresentation.Slides(slideIndex)
+        
+        Dim shapeIndex As Long
+        For shapeIndex = 1 To currentSlide.Shapes.Count
+            Dim currentShape As Shape
+            Set currentShape = currentSlide.Shapes(shapeIndex)
+            
+            If currentShape.HasTable Then
+                If currentShape.Height <= OLD_HEIGHT_PT And currentShape.Width > MIN_WIDTH_PT Then
+                    Dim oldTableName As String
+                    oldTableName = currentShape.Name
+                    
+                    currentShape.Height = NEW_HEIGHT_PT
+                    currentShape.Name = TABLE_NAME
+                    processedTables = processedTables + 1
+                    
+                    ' ✅ DEBUG PRINT - TIENG VIET KHONG DAU
+                    Debug.Print "Slide " & slideIndex & ": '" & oldTableName & "' | R:" & Format(currentShape.Width / 28.3464567, "0.00") & "cm x C:" & Format(NEW_HEIGHT_CM, "0.00") & "cm | " & TABLE_NAME
+                End If
+            End If
+        Next shapeIndex
+    Next slideIndex
+    
+    MsgBox "Hoan thanh!" & vbCrLf & "Xu ly: " & processedTables & " bang" & vbCrLf & "Tong slide: " & totalSlides, vbInformation, "Ket qua"
+    Set currentSlide = Nothing
+End Sub
